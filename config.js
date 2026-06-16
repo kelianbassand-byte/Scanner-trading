@@ -58,4 +58,25 @@ export const config = {
     // On evite de re-alerter le meme order block en boucle
     alertCooldownMin: 60,
   },
+
+  // --- Calendrier economique / news ---
+  news: {
+    // Devises a surveiller. Pour le Bitcoin, le USD est le moteur principal
+    // (Fed, CPI, taux, emploi). On peut ajouter "EUR" si besoin.
+    currencies: ["USD"],
+
+    // Cle API jBlanked (optionnelle). Laisse vide pour l'usage gratuit.
+    apiKey: process.env.NEWS_API_KEY || "",
+
+    // Fenetre de danger autour de chaque news (en minutes, avant ET apres).
+    // Pendant cette fenetre : avertissement + score reduit.
+    windowMinutes: 15,
+
+    // De combien on baisse le score d'une alerte OB pendant la fenetre de news.
+    scorePenalty: 25,
+
+    // Heure d'envoi du calendrier du matin (heure de Paris, format 24h).
+    morningHour: 8,
+    morningMinute: 0,
+  },
 };
