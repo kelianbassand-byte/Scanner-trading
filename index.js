@@ -13,7 +13,8 @@
 import { config } from "./config.js";
 import { fetchCandles } from "./data.js";
 import { findOrderBlocks } from "./orderblocks.js";
-import { sendTelegram, formatSignal } from "./telegram.js";
+import { findTriangles } from "./triangles.js";
+import { sendTelegram, formatSignal, formatTriangle } from "./telegram.js";
 
 // Memoire anti-doublon : cle = actif|tf|indexOB, valeur = timestamp dernier envoi
 const alertMemory = new Map();
@@ -64,18 +65,60 @@ async function scanOne(asset, timeframe) {
   const message = formatSignal(asset.name, timeframe, best);
   await sendTelegram(config, message);
   alertMemory.set(key, Date.now());
-  console.log(`  >>> ALERTE ${asset.name} ${timeframe} score ${best.totalScore}`);
+  console.log(`  >>> ALERTE OB ${asset.name} ${timeframe} score ${best.totalScore}`);
+}
+
+// Scan d'un triangle/biseau sur une grande unite de temps.
+async function scanTriangle(asset, timeframe) {
+  const candles = await fetchCandles(asset, timeframe, config.candleLimit, config);
+  if (!candles || candles.length < 60) {
+    console.log(`  ${asset.name} ${timeframe} (triangle): pas assez de donnees`);
+    return;
+  }
+
+  const tri = findTriangles(candles, {});
+  if (!tri) {
+    console.log(`  ${asset.name} ${timeframe} (triangle): aucune cassure`);
+    return;
+  }
+  // On n'alerte que les cassures dans le sens de la tendance
+  if (!tri.trendOk) {
+    console.log(`  ${asset.name} ${timeframe} (triangle): cassure contre-tendance, ignoree`);
+    return;
+  }
+
+  // Anti-doublon : une cassure par bougie de cloture
+  const lastTime = candles[candles.length - 1].time;
+  const key = `TRI|${asset.name}|${timeframe}|${lastTime}`;
+  if (alreadyAlerted(key)) {
+    console.log(`  ${asset.name} ${timeframe} (triangle): deja alerte`);
+    return;
+  }
+
+  const message = formatTriangle(asset.name, timeframe, tri);
+  await sendTelegram(config, message);
+  alertMemory.set(key, Date.now());
+  console.log(`  >>> ALERTE TRIANGLE ${asset.name} ${timeframe} ${tri.type} ${tri.breakout}`);
 }
 
 async function scanAll() {
   const stamp = new Date().toISOString();
   console.log(`\n[${stamp}] Scan en cours...`);
   for (const asset of config.assets) {
+    // Order blocks sur petites unites de temps
     for (const tf of config.timeframes) {
       try {
         await scanOne(asset, tf);
       } catch (e) {
         console.error(`  ${asset.name} ${tf}: erreur -> ${e.message}`);
+      }
+    }
+    // Triangles/biseaux sur grandes unites de temps
+    for (const tf of config.triangleTimeframes) {
+      try {
+        await scanTriangle(asset, tf);
+      } catch (e) {
+        console.error(`  ${asset.name} ${tf} (triangle): erreur -> ${e.message}`);
       }
     }
   }
@@ -84,8 +127,9 @@ async function scanAll() {
 async function main() {
   console.log("=== OB Scanner demarre ===");
   console.log(`Actifs: ${config.assets.map((a) => a.name).join(", ")}`);
-  console.log(`Timeframes: ${config.timeframes.join(", ")}`);
-  console.log(`Seuil d'alerte: ${config.detection.minScoreToAlert}/100`);
+  console.log(`Timeframes order blocks: ${config.timeframes.join(", ")}`);
+  console.log(`Timeframes triangles: ${config.triangleTimeframes.join(", ")}`);
+  console.log(`Seuil d'alerte OB: ${config.detection.minScoreToAlert}/100`);
   console.log(`Scan toutes les ${config.scanIntervalSec}s\n`);
 
   await scanAll();

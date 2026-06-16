@@ -78,3 +78,28 @@ function round(x) {
   if (x >= 1) return x.toFixed(2);
   return x.toFixed(4);
 }
+
+// Met en forme une alerte de cassure de triangle/biseau.
+export function formatTriangle(assetName, timeframe, tri) {
+  const dir =
+    tri.breakout === "bullish"
+      ? "🟢 CASSURE HAUSSIERE (achat)"
+      : "🔴 CASSURE BAISSIERE (vente)";
+  const trendLine = tri.trendOk
+    ? "✅ Dans le sens de la tendance (EMA200)"
+    : `⚠️ ${tri.trendNote}`;
+
+  return (
+    `<b>📐 TRIANGLE/BISEAU ${assetName} — ${timeframe}</b>\n` +
+    `${dir}\n` +
+    `Figure : ${tri.type}\n` +
+    `${trendLine}\n\n` +
+    `Zone figure : ${round(tri.figureBottom)} → ${round(tri.figureTop)}\n\n` +
+    `<b>📍 Niveaux de trade</b>\n` +
+    `Entree : ${round(tri.entry)}\n` +
+    `🛑 Stop Loss : ${round(tri.stopLoss)}\n` +
+    `🎯 Take Profit : ${round(tri.takeProfit)}\n` +
+    `Risque : ${round(tri.risk)} points\n\n` +
+    `<i>Cassure validee par une vraie bougie. Aide a la decision, pas un ordre — verifie sur ton graphique.</i>`
+  );
+}

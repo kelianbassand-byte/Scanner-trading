@@ -27,9 +27,12 @@ export const config = {
     { name: "BTCUSD", source: "binance", symbol: "BTCUSDT" },
   ],
 
-  // --- Timeframes a scanner (plusieurs a la fois) ---
-  // Format Binance: 5m, 15m, 1h | Format TwelveData gere automatiquement
+  // --- Timeframes a scanner pour les ORDER BLOCKS ---
   timeframes: ["5m", "15m", "1h"],
+
+  // --- Timeframes a scanner pour les TRIANGLES/BISEAUX ---
+  // Les videos recommandent les grandes unites de temps (4h, daily).
+  triangleTimeframes: ["4h", "1d"],
 
   // --- Combien de bougies on recupere pour l'analyse ---
   candleLimit: 200,
