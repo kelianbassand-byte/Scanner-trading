@@ -60,9 +60,16 @@ export function formatSignal(assetName, timeframe, signal) {
     `${starsLine[2]} Non mitige\n` +
     `${starsLine[3]} Prise de liquidite\n` +
     `${starsLine[4]} Session volatile\n\n` +
-    `<b>RSI:</b> ${signal.rsiValue ?? "?"} (${signal.rsiBias}) — bonus +${signal.rsiBonus}\n` +
+    `<b>RSI:</b> ${signal.rsiValue ?? "?"} (${signal.rsiBias}, zone ${signal.rsiZone}) — bonus +${signal.rsiBonus}\n` +
     (signal.rsiNotes.length ? signal.rsiNotes.map((n) => "• " + n).join("\n") + "\n" : "") +
-    `\n<i>Ceci est une aide a la decision, pas un ordre. Verifie sur ton graphique.</i>`
+    `\n<b>📍 Niveaux de trade</b>\n` +
+    `Entree : ${round(signal.entry)}\n` +
+    `🛑 Stop Loss : ${round(signal.stopLoss)}\n` +
+    `🎯 TP1 (1x) : ${round(signal.takeProfits.tp1)}\n` +
+    `🎯 TP2 (2x) : ${round(signal.takeProfits.tp2)}\n` +
+    `🎯 TP3 (3x) : ${round(signal.takeProfits.tp3)}\n` +
+    `Risque : ${round(signal.risk)} points\n` +
+    `\n<i>Ceci est une aide a la decision, pas un ordre. Verifie sur ton graphique et ne risque que ce que tu peux te permettre de perdre.</i>`
   );
 }
 

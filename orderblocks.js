@@ -22,7 +22,7 @@
 //  Chaque etoile vaut 20 points -> score sur 100.
 // ============================================================
 
-import { computeRSI, rsiBias, detectDivergence } from "./rsi.js";
+import { computeRSI, rsiBias, rsiAnalyse, detectDivergence } from "./rsi.js";
 
 // candle = { time, open, high, low, close, volume }
 
@@ -174,6 +174,7 @@ export function findOrderBlocks(candles, opts) {
     // --- RSI en BONUS (selon ta demande: OB d'abord, RSI en bonus) ---
     const lastRsi = rsi[rsi.length - 1];
     const bias = rsiBias(lastRsi);
+    const rsiInfo = rsiAnalyse(lastRsi); // analyse detaillee (zone, force, texte)
     const divergence = detectDivergence(
       candles.map((c) => c.close),
       rsi
@@ -181,26 +182,62 @@ export function findOrderBlocks(candles, opts) {
 
     let rsiBonus = 0;
     const rsiNotes = [];
-    // Bonus si le RSI confirme la direction de l'OB
+    // Bonus si le RSI confirme la direction de l'OB.
+    // Plus la force du biais est grande, plus le bonus est eleve (jusqu'a +6).
     if (direction === "bullish" && bias === "haussier") {
-      rsiBonus += 5;
-      rsiNotes.push("RSI>50 confirme le biais haussier (+5)");
+      const b = 2 + rsiInfo.force; // force 1->3, 2->4, 3->5
+      rsiBonus += b;
+      rsiNotes.push(`${rsiInfo.texte} (+${b})`);
     }
     if (direction === "bearish" && bias === "baissier") {
-      rsiBonus += 5;
-      rsiNotes.push("RSI<50 confirme le biais baissier (+5)");
+      const b = 2 + rsiInfo.force;
+      rsiBonus += b;
+      rsiNotes.push(`${rsiInfo.texte} (+${b})`);
+    }
+    // Petit malus si le RSI contredit la direction de l'OB (prudence)
+    if (direction === "bullish" && bias === "baissier") {
+      rsiNotes.push(`${rsiInfo.texte} — attention, RSI contre la direction`);
+    }
+    if (direction === "bearish" && bias === "haussier") {
+      rsiNotes.push(`${rsiInfo.texte} — attention, RSI contre la direction`);
     }
     // Bonus si divergence dans le bon sens
     if (direction === "bullish" && divergence === "bullish") {
-      rsiBonus += 5;
-      rsiNotes.push("Divergence haussiere (+5)");
+      rsiBonus += 4;
+      rsiNotes.push("Divergence haussiere (+4)");
     }
     if (direction === "bearish" && divergence === "bearish") {
-      rsiBonus += 5;
-      rsiNotes.push("Divergence baissiere (+5)");
+      rsiBonus += 4;
+      rsiNotes.push("Divergence baissiere (+4)");
     }
 
     const totalScore = Math.min(100, baseScore + rsiBonus);
+
+    // ---- Calcul du Stop Loss et des Take Profits ----
+    // Methode des videos : le Stop Loss se place juste sous l'OB (achat)
+    // ou juste au-dessus (vente). On ajoute une petite marge de securite
+    // pour le spread du broker.
+    const entry = lastPriceForCalc(candles); // prix d'entree = dernier prix
+    const margin = (zone.top - zone.bottom) * 0.1; // 10% de la hauteur de l'OB
+    let stopLoss, risk, takeProfits;
+
+    if (direction === "bullish") {
+      stopLoss = zone.bottom - margin; // SL sous l'order block
+      risk = entry - stopLoss; // distance de risque
+      takeProfits = {
+        tp1: entry + risk * 1, // 1x le risque
+        tp2: entry + risk * 2, // 2x le risque
+        tp3: entry + risk * 3, // 3x le risque
+      };
+    } else {
+      stopLoss = zone.top + margin; // SL au-dessus de l'order block
+      risk = stopLoss - entry;
+      takeProfits = {
+        tp1: entry - risk * 1,
+        tp2: entry - risk * 2,
+        tp3: entry - risk * 3,
+      };
+    }
 
     results.push({
       ...zone,
@@ -209,12 +246,24 @@ export function findOrderBlocks(candles, opts) {
       baseScore,
       rsiValue: lastRsi != null ? Math.round(lastRsi * 10) / 10 : null,
       rsiBias: bias,
+      rsiZone: rsiInfo.zone,
+      rsiForce: rsiInfo.force,
       rsiBonus,
       rsiNotes,
       totalScore,
       trend,
+      // Niveaux de trade
+      entry,
+      stopLoss,
+      risk,
+      takeProfits,
     });
   }
 
   return results;
+}
+
+// Renvoie le dernier prix de cloture (prix d'entree theorique).
+function lastPriceForCalc(candles) {
+  return candles[candles.length - 1].close;
 }

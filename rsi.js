@@ -54,6 +54,59 @@ export function rsiBias(rsiValue) {
   return "baissier";
 }
 
+// Analyse RSI amelioree selon la methode des videos (neutralite 50 + zones).
+// Retourne un objet detaille pour affichage et scoring.
+//   - bias: "haussier" / "baissier" (par rapport a 50)
+//   - zone: "surachat" (>70), "force-haussiere" (50-70),
+//           "force-baissiere" (30-50), "survente" (<30)
+//   - force: une note de 0 a 3 sur la solidite du biais
+//   - texte: description lisible
+export function rsiAnalyse(rsiValue) {
+  if (rsiValue == null) {
+    return { bias: "indetermine", zone: "?", force: 0, texte: "RSI indisponible" };
+  }
+  const v = rsiValue;
+  let zone, bias, force, texte;
+
+  if (v >= 70) {
+    // Selon les videos: >70 = marche TRES haussier (pas un signal de vente !)
+    zone = "surachat";
+    bias = "haussier";
+    force = 3;
+    texte = `RSI ${round1(v)} : marche tres haussier (>70)`;
+  } else if (v >= 55) {
+    zone = "force-haussiere";
+    bias = "haussier";
+    force = 2;
+    texte = `RSI ${round1(v)} : biais haussier confirme (>55)`;
+  } else if (v >= 50) {
+    zone = "force-haussiere";
+    bias = "haussier";
+    force = 1;
+    texte = `RSI ${round1(v)} : legerement haussier (au-dessus de 50)`;
+  } else if (v >= 45) {
+    zone = "force-baissiere";
+    bias = "baissier";
+    force = 1;
+    texte = `RSI ${round1(v)} : legerement baissier (sous 50)`;
+  } else if (v >= 30) {
+    zone = "force-baissiere";
+    bias = "baissier";
+    force = 2;
+    texte = `RSI ${round1(v)} : biais baissier confirme (<45)`;
+  } else {
+    zone = "survente";
+    bias = "baissier";
+    force = 3;
+    texte = `RSI ${round1(v)} : marche tres baissier (<30)`;
+  }
+  return { bias, zone, force, texte };
+}
+
+function round1(x) {
+  return Math.round(x * 10) / 10;
+}
+
 // Detecte une divergence simple sur les N dernieres bougies.
 // Divergence haussiere (bullish): le prix fait un plus-bas plus bas,
 // mais le RSI fait un plus-bas plus haut. (et inverse pour baissiere)

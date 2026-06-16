@@ -21,9 +21,10 @@ export const config = {
 
   // --- Quels actifs scanner ---
   // source: "binance" ou "twelvedata"
+  // L'or (XAUUSD) est desactive car les donnees gratuites sont en retard.
+  // On garde le Bitcoin seul (Binance = temps reel fiable).
   assets: [
     { name: "BTCUSD", source: "binance", symbol: "BTCUSDT" },
-    { name: "XAUUSD", source: "twelvedata", symbol: "XAU/USD" },
   ],
 
   // --- Timeframes a scanner (plusieurs a la fois) ---
