@@ -60,6 +60,17 @@ export const config = {
     alertCooldownMin: 60,
   },
 
+  // --- Grille Stop Loss / Take Profit (en % du prix d'entree) ---
+  // Meme logique pour BTC et ETH. SL serre, TP1 souvent touche.
+  tradeLevels: {
+    slPct: 0.5, // Stop Loss a -0,5%
+    tp1Pct: 0.75, // TP1 a +0,75% (~1,5R) — accessible, souvent touche
+    tp2Pct: 1.5, // TP2 a +1,5% (~3R)
+    tp3Pct: 3.0, // TP3 a +3% (~6R)
+    // Quand TP1 est touche, on remonte le SL au point d'entree (break-even).
+    moveSlToEntryAtTp1: true,
+  },
+
   // --- Calendrier economique / news ---
   news: {
     // Devises a surveiller. Pour le Bitcoin, le USD est le moteur principal

@@ -214,28 +214,27 @@ export function findOrderBlocks(candles, opts) {
     const totalScore = Math.min(100, baseScore + rsiBonus);
 
     // ---- Calcul du Stop Loss et des Take Profits ----
-    // Methode des videos : le Stop Loss se place juste sous l'OB (achat)
-    // ou juste au-dessus (vente). On ajoute une petite marge de securite
-    // pour le spread du broker.
+    // Grille en % du prix d'entree (config.tradeLevels), meme logique
+    // pour BTC et ETH. SL serre, TP1 accessible, TP2/TP3 plus loin.
     const entry = lastPriceForCalc(candles); // prix d'entree = dernier prix
-    const margin = (zone.top - zone.bottom) * 0.1; // 10% de la hauteur de l'OB
+    const lv = opts.tradeLevels || { slPct: 0.5, tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
     let stopLoss, risk, takeProfits;
 
     if (direction === "bullish") {
-      stopLoss = zone.bottom - margin; // SL sous l'order block
-      risk = entry - stopLoss; // distance de risque
+      stopLoss = entry * (1 - lv.slPct / 100);
+      risk = entry - stopLoss;
       takeProfits = {
-        tp1: entry + risk * 1, // 1x le risque
-        tp2: entry + risk * 2, // 2x le risque
-        tp3: entry + risk * 3, // 3x le risque
+        tp1: entry * (1 + lv.tp1Pct / 100),
+        tp2: entry * (1 + lv.tp2Pct / 100),
+        tp3: entry * (1 + lv.tp3Pct / 100),
       };
     } else {
-      stopLoss = zone.top + margin; // SL au-dessus de l'order block
+      stopLoss = entry * (1 + lv.slPct / 100);
       risk = stopLoss - entry;
       takeProfits = {
-        tp1: entry - risk * 1,
-        tp2: entry - risk * 2,
-        tp3: entry - risk * 3,
+        tp1: entry * (1 - lv.tp1Pct / 100),
+        tp2: entry * (1 - lv.tp2Pct / 100),
+        tp3: entry * (1 - lv.tp3Pct / 100),
       };
     }
 

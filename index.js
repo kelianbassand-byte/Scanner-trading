@@ -14,12 +14,13 @@ import { config } from "./config.js";
 import { fetchCandles } from "./data.js";
 import { findOrderBlocks } from "./orderblocks.js";
 import { findTriangles } from "./triangles.js";
-import { sendTelegram, formatSignal, formatTriangle } from "./telegram.js";
+import { sendTelegram, formatSignal, formatTriangle, formatTradeEvent } from "./telegram.js";
 import {
   fetchEconomicCalendar,
   newsWindowActive,
   formatCalendar,
 } from "./calendar.js";
+import { openTrade, updateTradesFor } from "./trades.js";
 
 // Cache du calendrier du jour (recupere une fois, reutilise pendant la journee)
 let todayEvents = null; // tableau d'events | null si pas encore recupere
@@ -96,7 +97,19 @@ async function scanOne(asset, timeframe) {
   }
   const lastPrice = candles[candles.length - 1].close;
 
-  const obs = findOrderBlocks(candles, config.detection);
+  // --- Suivi des trades deja ouverts sur cet actif/timeframe ---
+  // On verifie si la derniere bougie a touche un TP ou le SL.
+  const lastCandle = candles[candles.length - 1];
+  const moveSl = config.tradeLevels?.moveSlToEntryAtTp1;
+  const updates = updateTradesFor(asset.name, timeframe, lastCandle, moveSl);
+  for (const { trade, events } of updates) {
+    for (const ev of events) {
+      await sendTelegram(config, formatTradeEvent(trade, ev));
+      console.log(`  >>> ${ev} ${asset.name} ${timeframe} (suivi trade)`);
+    }
+  }
+
+  const obs = findOrderBlocks(candles, { ...config.detection, tradeLevels: config.tradeLevels });
 
   // --- Contexte news : sommes-nous dans une fenetre dangereuse ? ---
   await ensureCalendar();
@@ -141,6 +154,8 @@ async function scanOne(asset, timeframe) {
   }
   await sendTelegram(config, message);
   alertMemory.set(key, Date.now());
+  // On ouvre un trade virtuel pour le suivre (TP1/TP2/TP3/SL)
+  openTrade(asset, timeframe, best);
   console.log(
     `  >>> ALERTE OB ${asset.name} ${timeframe} score ${best.adjustedScore}${penalty ? " (news -" + penalty + ")" : ""}`
   );

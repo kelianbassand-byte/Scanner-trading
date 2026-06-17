@@ -79,6 +79,49 @@ function round(x) {
   return x.toFixed(4);
 }
 
+// Notification de suivi de trade (TP1 / TP2 / TP3 / SL touche).
+export function formatTradeEvent(trade, event) {
+  const sens = trade.direction === "bullish" ? "ACHAT" : "VENTE";
+  const head = `${trade.assetName} — ${trade.timeframe} (${sens})`;
+
+  if (event === "TP1") {
+    const be = trade.slMovedToEntry
+      ? `\n🔒 Stop Loss remonte au point d'entree (${round(trade.entry)}). Trade securise, plus de risque.`
+      : "";
+    return (
+      `🎯 <b>TP1 ATTEINT — ${head}</b>\n` +
+      `Prix entree : ${round(trade.entry)}\n` +
+      `TP1 : ${round(trade.tp1)} ✅${be}\n\n` +
+      `Prochains objectifs : TP2 ${round(trade.tp2)} | TP3 ${round(trade.tp3)}`
+    );
+  }
+  if (event === "TP2") {
+    return (
+      `🎯🎯 <b>TP2 ATTEINT — ${head}</b>\n` +
+      `TP2 : ${round(trade.tp2)} ✅\n\n` +
+      `Dernier objectif : TP3 ${round(trade.tp3)}`
+    );
+  }
+  if (event === "TP3") {
+    return (
+      `🏆 <b>TP3 ATTEINT — ${head}</b>\n` +
+      `TP3 : ${round(trade.tp3)} ✅\n` +
+      `Trade termine. Beau move !`
+    );
+  }
+  if (event === "SL") {
+    const atEntry = trade.slMovedToEntry;
+    return (
+      `🛑 <b>STOP LOSS TOUCHE — ${head}</b>\n` +
+      `SL : ${round(trade.stopLoss)}\n` +
+      (atEntry
+        ? `Le SL etait au point d'entree : trade ferme a l'equilibre (0 perte).`
+        : `Trade ferme en perte. Ca arrive, le capital est protege.`)
+    );
+  }
+  return `Evenement ${event} sur ${head}`;
+}
+
 // Met en forme une alerte de cassure de triangle/biseau.
 export function formatTriangle(assetName, timeframe, tri) {
   const dir =
