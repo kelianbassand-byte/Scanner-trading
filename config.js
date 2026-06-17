@@ -20,11 +20,11 @@ export const config = {
   },
 
   // --- Quels actifs scanner ---
-  // source: "binance" ou "twelvedata"
+  // source: "coinbase" (defaut, marche sur serveurs US), "binance" ou "twelvedata"
   // L'or (XAUUSD) est desactive car les donnees gratuites sont en retard.
   // On garde le Bitcoin seul (Binance = temps reel fiable).
   assets: [
-    { name: "BTCUSD", source: "binance", symbol: "BTCUSDT" },
+    { name: "BTCUSD", source: "coinbase", symbol: "BTC-USD" },
   ],
 
   // --- Timeframes a scanner pour les ORDER BLOCKS ---
