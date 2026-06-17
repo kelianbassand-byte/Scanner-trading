@@ -25,6 +25,7 @@ export const config = {
   // On garde le Bitcoin seul (Binance = temps reel fiable).
   assets: [
     { name: "BTCUSD", source: "coinbase", symbol: "BTC-USD" },
+    { name: "ETHUSD", source: "coinbase", symbol: "ETH-USD" },
   ],
 
   // --- Timeframes a scanner pour les ORDER BLOCKS ---
