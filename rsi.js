@@ -93,12 +93,12 @@ export function rsiAnalyse(rsiValue) {
     zone = "force-baissiere";
     bias = "baissier";
     force = 2;
-    texte = `RSI ${round1(v)} : biais baissier confirme (<45)`;
+    texte = `RSI ${round1(v)} : biais baissier confirme (&lt;45)`;
   } else {
     zone = "survente";
     bias = "baissier";
     force = 3;
-    texte = `RSI ${round1(v)} : marche tres baissier (<30)`;
+    texte = `RSI ${round1(v)} : marche tres baissier (&lt;30)`;
   }
   return { bias, zone, force, texte };
 }
