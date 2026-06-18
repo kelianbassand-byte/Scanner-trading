@@ -12,15 +12,24 @@
 
 import { config } from "./config.js";
 import { fetchCandles } from "./data.js";
-import { findOrderBlocks } from "./orderblocks.js";
+import { findOrderBlockVShape } from "./orderblocks_v.js";
+import { findRsiDivergence } from "./divergence.js";
 import { findTriangles } from "./triangles.js";
-import { sendTelegram, formatSignal, formatTriangle, formatTradeEvent } from "./telegram.js";
+import { findTrendlineBreak } from "./trendlines.js";
+import {
+  sendTelegram,
+  formatTriangle,
+  formatTradeEvent,
+  formatOrderBlockV,
+  formatDivergence,
+  formatTrendline,
+} from "./telegram.js";
 import {
   fetchEconomicCalendar,
   newsWindowActive,
   formatCalendar,
 } from "./calendar.js";
-import { openTrade, updateTradesFor } from "./trades.js";
+import { openTrade, updateTradesFor, hasOpenTrade } from "./trades.js";
 
 // Cache du calendrier du jour (recupere une fois, reutilise pendant la journee)
 let todayEvents = null; // tableau d'events | null si pas encore recupere
@@ -81,12 +90,33 @@ function alreadyAlerted(key) {
   return elapsedMin < config.detection.alertCooldownMin;
 }
 
-// Garde seulement les OB "proches" du prix actuel (pertinents pour trader bientot).
-// On considere pertinent un OB dont la zone est a moins de ~3% du dernier prix.
-function isRelevant(ob, lastPrice) {
-  const mid = (ob.top + ob.bottom) / 2;
-  const dist = Math.abs(lastPrice - mid) / lastPrice;
-  return dist <= 0.03 && ob.stars.nonMitige;
+// ============================================================
+//  SCAN d'un actif sur un timeframe : 3 techniques independantes
+//   1. Order Block V / V inverse
+//   2. Divergence RSI + MACD Zero Lag
+//   3. Triangle / biseau
+//
+//  Anti-doublon : un trade est identifie par actif+timeframe+TECHNIQUE.
+//  Tant qu'un trade d'une technique est ouvert (pas de SL touche), on
+//  ne relance pas un trade de la MEME technique sur le meme actif/TF.
+//  Mais une autre technique peut ouvrir son propre trade en parallele.
+// ============================================================
+
+// Applique l'avertissement news a un message si une news est en cours.
+function withNewsWarning(message, activeNews) {
+  if (!activeNews) return message;
+  const h = activeNews.time
+    ? activeNews.time.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Paris",
+      })
+    : "";
+  return (
+    `⚠️ <b>NEWS A FORT IMPACT EN COURS</b> (${activeNews.currency} ${activeNews.name} ${h})\n` +
+    `Le marche est imprevisible : prudence, voire ne prends pas ce trade.\n\n` +
+    message
+  );
 }
 
 async function scanOne(asset, timeframe) {
@@ -96,103 +126,120 @@ async function scanOne(asset, timeframe) {
     return;
   }
   const lastPrice = candles[candles.length - 1].close;
-
-  // --- Suivi des trades deja ouverts sur cet actif/timeframe ---
-  // On verifie si la derniere bougie a touche un TP ou le SL.
   const lastCandle = candles[candles.length - 1];
+
+  // --- 1) Suivi des trades deja ouverts (toutes techniques) ---
   const moveSl = config.tradeLevels?.moveSlToEntryAtTp1;
   const updates = updateTradesFor(asset.name, timeframe, lastCandle, moveSl);
   for (const { trade, events } of updates) {
     for (const ev of events) {
       await sendTelegram(config, formatTradeEvent(trade, ev));
-      console.log(`  >>> ${ev} ${asset.name} ${timeframe} (suivi trade)`);
+      console.log(`  >>> ${ev} ${asset.name} ${timeframe} ${trade.technique} (suivi)`);
     }
   }
 
-  const obs = findOrderBlocks(candles, { ...config.detection, tradeLevels: config.tradeLevels });
-
-  // --- Contexte news : sommes-nous dans une fenetre dangereuse ? ---
+  // --- Contexte news (avertissement uniquement) ---
   await ensureCalendar();
   const activeNews = newsWindowActive(todayEvents, new Date(), config.news.windowMinutes);
-  const penalty = activeNews ? config.news.scorePenalty : 0;
 
-  // On filtre: pertinents + score suffisant (APRES penalite news), puis le meilleur
-  const candidates = obs
-    .filter((o) => isRelevant(o, lastPrice))
-    .map((o) => ({ ...o, adjustedScore: o.totalScore - penalty }))
-    .filter((o) => o.adjustedScore >= config.detection.minScoreToAlert)
-    .sort((a, b) => b.adjustedScore - a.adjustedScore);
+  const lv = config.tradeLevels;
 
-  if (candidates.length === 0) {
-    const why = penalty
-      ? `aucun signal (news en cours, score -${penalty})`
-      : `aucun signal (prix ${lastPrice})`;
-    console.log(`  ${asset.name} ${timeframe}: ${why}`);
-    return;
+  // ====== TECHNIQUE 1 : ORDER BLOCK V / V inverse ======
+  if (!hasOpenTrade(asset.name, timeframe, "ob_vshape")) {
+    const ob = findOrderBlockVShape(candles, { tradeLevels: lv });
+    if (ob && ob.trendOk) {
+      const key = `OBV|${asset.name}|${timeframe}|${ob.index}`;
+      if (!alreadyAlerted(key)) {
+        await sendTelegram(config, withNewsWarning(formatOrderBlockV(asset.name, timeframe, ob), activeNews));
+        alertMemory.set(key, Date.now());
+        openTrade(asset, timeframe, ob);
+        console.log(`  >>> ALERTE OB-V ${asset.name} ${timeframe} ${ob.direction}`);
+      }
+    } else {
+      console.log(`  ${asset.name} ${timeframe} (OB-V): aucun signal`);
+    }
+  } else {
+    console.log(`  ${asset.name} ${timeframe} (OB-V): trade en cours, on attend le SL`);
   }
 
-  const best = candidates[0];
-  const key = `${asset.name}|${timeframe}|${best.index}`;
-  if (alreadyAlerted(key)) {
-    console.log(`  ${asset.name} ${timeframe}: signal deja alerte (cooldown)`);
-    return;
+  // ====== TECHNIQUE 2 : DIVERGENCE RSI + MACD Zero Lag ======
+  if (!hasOpenTrade(asset.name, timeframe, "rsi_divergence")) {
+    const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv });
+    if (div) {
+      const key = `DIV|${asset.name}|${timeframe}|${div.index}`;
+      if (!alreadyAlerted(key)) {
+        await sendTelegram(config, withNewsWarning(formatDivergence(asset.name, timeframe, div), activeNews));
+        alertMemory.set(key, Date.now());
+        openTrade(asset, timeframe, div);
+        console.log(`  >>> ALERTE DIV ${asset.name} ${timeframe} ${div.direction}`);
+      }
+    } else {
+      console.log(`  ${asset.name} ${timeframe} (DIV): aucun signal`);
+    }
+  } else {
+    console.log(`  ${asset.name} ${timeframe} (DIV): trade en cours, on attend le SL`);
   }
 
-  let message = formatSignal(asset.name, timeframe, best);
-  if (activeNews) {
-    const h = activeNews.time
-      ? activeNews.time.toLocaleTimeString("fr-FR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Europe/Paris",
-        })
-      : "";
-    message =
-      `⚠️ <b>NEWS A FORT IMPACT EN COURS</b> (${activeNews.currency} ${activeNews.name} ${h})\n` +
-      `Score reduit de ${penalty}. Le marche est imprevisible : prudence, voire ne prends pas ce trade.\n\n` +
-      message;
+  // ====== TECHNIQUE 3 : TRIANGLE / BISEAU ======
+  if (!hasOpenTrade(asset.name, timeframe, "triangle")) {
+    const tri = findTriangles(candles, {});
+    if (tri && tri.trendOk) {
+      const lastTime = candles[candles.length - 1].time;
+      const key = `TRI|${asset.name}|${timeframe}|${lastTime}`;
+      if (!alreadyAlerted(key)) {
+        await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, timeframe, tri), activeNews));
+        alertMemory.set(key, Date.now());
+        // On ouvre aussi un trade de suivi pour le triangle
+        const triSignal = {
+          technique: "triangle",
+          direction: tri.breakout === "bullish" ? "bullish" : "bearish",
+          index: lastTime,
+          entry: tri.entry,
+          stopLoss: tri.stopLoss,
+          takeProfits: buildTriangleTPs(tri, lv),
+        };
+        openTrade(asset, timeframe, triSignal);
+        console.log(`  >>> ALERTE TRIANGLE ${asset.name} ${timeframe} ${tri.type} ${tri.breakout}`);
+      }
+    } else {
+      console.log(`  ${asset.name} ${timeframe} (triangle): aucune cassure`);
+    }
+  } else {
+    console.log(`  ${asset.name} ${timeframe} (triangle): trade en cours, on attend le SL`);
   }
-  await sendTelegram(config, message);
-  alertMemory.set(key, Date.now());
-  // On ouvre un trade virtuel pour le suivre (TP1/TP2/TP3/SL)
-  openTrade(asset, timeframe, best);
-  console.log(
-    `  >>> ALERTE OB ${asset.name} ${timeframe} score ${best.adjustedScore}${penalty ? " (news -" + penalty + ")" : ""}`
-  );
+
+  // ====== TECHNIQUE 4 : LIGNES DE TENDANCE (cassure) ======
+  // Seulement sur les timeframes conseilles (1h, 4h) — pas en 15m.
+  if (config.trendlineTimeframes.includes(timeframe)) {
+    if (!hasOpenTrade(asset.name, timeframe, "trendline")) {
+      const tl = findTrendlineBreak(candles, { tradeLevels: lv });
+      if (tl) {
+        const key = `TL|${asset.name}|${timeframe}|${tl.index}|${tl.direction}`;
+        if (!alreadyAlerted(key)) {
+          await sendTelegram(config, withNewsWarning(formatTrendline(asset.name, timeframe, tl), activeNews));
+          alertMemory.set(key, Date.now());
+          openTrade(asset, timeframe, tl);
+          console.log(`  >>> ALERTE TRENDLINE ${asset.name} ${timeframe} ${tl.direction}`);
+        }
+      } else {
+        console.log(`  ${asset.name} ${timeframe} (trendline): aucune cassure`);
+      }
+    } else {
+      console.log(`  ${asset.name} ${timeframe} (trendline): trade en cours, on attend le SL`);
+    }
+  }
 }
 
-// Scan d'un triangle/biseau sur une grande unite de temps.
-async function scanTriangle(asset, timeframe) {
-  const candles = await fetchCandles(asset, timeframe, config.candleLimit, config);
-  if (!candles || candles.length < 60) {
-    console.log(`  ${asset.name} ${timeframe} (triangle): pas assez de donnees`);
-    return;
+// Pour le triangle, on aligne les TP sur la grille en % (coherence avec le reste).
+function buildTriangleTPs(tri, lv) {
+  const g = lv || { tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
+  const e = tri.entry;
+  if (tri.breakout === "bullish") {
+    return { tp1: e * (1 + g.tp1Pct / 100), tp2: e * (1 + g.tp2Pct / 100), tp3: e * (1 + g.tp3Pct / 100) };
   }
-
-  const tri = findTriangles(candles, {});
-  if (!tri) {
-    console.log(`  ${asset.name} ${timeframe} (triangle): aucune cassure`);
-    return;
-  }
-  // On n'alerte que les cassures dans le sens de la tendance
-  if (!tri.trendOk) {
-    console.log(`  ${asset.name} ${timeframe} (triangle): cassure contre-tendance, ignoree`);
-    return;
-  }
-
-  // Anti-doublon : une cassure par bougie de cloture
-  const lastTime = candles[candles.length - 1].time;
-  const key = `TRI|${asset.name}|${timeframe}|${lastTime}`;
-  if (alreadyAlerted(key)) {
-    console.log(`  ${asset.name} ${timeframe} (triangle): deja alerte`);
-    return;
-  }
-
-  const message = formatTriangle(asset.name, timeframe, tri);
-  await sendTelegram(config, message);
-  alertMemory.set(key, Date.now());
-  console.log(`  >>> ALERTE TRIANGLE ${asset.name} ${timeframe} ${tri.type} ${tri.breakout}`);
+  return { tp1: e * (1 - g.tp1Pct / 100), tp2: e * (1 - g.tp2Pct / 100), tp3: e * (1 - g.tp3Pct / 100) };
 }
+
 
 async function scanAll() {
   const stamp = new Date().toISOString();
@@ -206,7 +253,6 @@ async function scanAll() {
   }
 
   for (const asset of config.assets) {
-    // Order blocks sur petites unites de temps
     for (const tf of config.timeframes) {
       try {
         await scanOne(asset, tf);
@@ -214,23 +260,14 @@ async function scanAll() {
         console.error(`  ${asset.name} ${tf}: erreur -> ${e.message}`);
       }
     }
-    // Triangles/biseaux sur grandes unites de temps
-    for (const tf of config.triangleTimeframes) {
-      try {
-        await scanTriangle(asset, tf);
-      } catch (e) {
-        console.error(`  ${asset.name} ${tf} (triangle): erreur -> ${e.message}`);
-      }
-    }
   }
 }
 
 async function main() {
-  console.log("=== OB Scanner demarre ===");
+  console.log("=== Scanner trading demarre ===");
   console.log(`Actifs: ${config.assets.map((a) => a.name).join(", ")}`);
-  console.log(`Timeframes order blocks: ${config.timeframes.join(", ")}`);
-  console.log(`Timeframes triangles: ${config.triangleTimeframes.join(", ")}`);
-  console.log(`Seuil d'alerte OB: ${config.detection.minScoreToAlert}/100`);
+  console.log(`Timeframes (15m min): ${config.timeframes.join(", ")}`);
+  console.log(`Techniques: Order Block V/V, Divergence RSI+MACD ZeroLag, Triangles, Lignes de tendance (1h/4h)`);
   console.log(`Scan toutes les ${config.scanIntervalSec}s\n`);
 
   await scanAll();

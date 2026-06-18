@@ -17,13 +17,17 @@
 // Map des trades ouverts. Cle = identifiant unique du trade.
 const openTrades = new Map();
 
-// Cree un trade a partir d'une alerte order block.
+// Cree un trade a partir d'un signal (order block V, divergence, ou triangle).
+// La "technique" fait partie de l'identite : on peut avoir 2 trades sur le
+// meme actif/timeframe SI ce sont des techniques differentes.
 export function openTrade(asset, timeframe, signal) {
-  const id = `${asset.name}|${timeframe}|${signal.index}|${signal.entry.toFixed(2)}`;
+  const technique = signal.technique || "ob";
+  const id = `${asset.name}|${timeframe}|${technique}|${signal.index}|${signal.entry.toFixed(2)}`;
   if (openTrades.has(id)) return null; // deja suivi
 
   const trade = {
     id,
+    technique,
     assetName: asset.name,
     timeframe,
     direction: signal.direction, // "bullish" / "bearish"
@@ -41,6 +45,21 @@ export function openTrade(asset, timeframe, signal) {
   };
   openTrades.set(id, trade);
   return trade;
+}
+
+// Anti-doublon : y a-t-il deja un trade ouvert sur ce meme
+// actif + timeframe + technique ? Si oui, on ne relance pas (on attend le SL).
+export function hasOpenTrade(assetName, timeframe, technique) {
+  for (const trade of openTrades.values()) {
+    if (
+      trade.assetName === assetName &&
+      trade.timeframe === timeframe &&
+      trade.technique === technique
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Verifie un trade contre la derniere bougie (prix haut/bas atteint).

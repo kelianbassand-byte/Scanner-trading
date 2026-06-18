@@ -73,6 +73,63 @@ export function formatSignal(assetName, timeframe, signal) {
   );
 }
 
+// Met en forme une alerte Order Block V / V inverse.
+export function formatOrderBlockV(assetName, timeframe, ob) {
+  const dir =
+    ob.direction === "bullish"
+      ? "🟢 ACHAT (Order Block haussier — creux en V)"
+      : "🔴 VENTE (Order Block baissier — pic en V inverse)";
+  return (
+    `📦 <b>ORDER BLOCK ${assetName} — ${timeframe}</b>\n` +
+    `${dir}\n` +
+    `✅ Dans le sens de la tendance de fond\n\n` +
+    `Zone OB : ${round(ob.zoneBottom)} → ${round(ob.zoneTop)}\n\n` +
+    `<b>📍 Niveaux</b>\n` +
+    `Entree : ${round(ob.entry)}\n` +
+    `🛑 SL : ${round(ob.stopLoss)}\n` +
+    `🎯 TP1 : ${round(ob.takeProfits.tp1)} | TP2 : ${round(ob.takeProfits.tp2)} | TP3 : ${round(ob.takeProfits.tp3)}\n\n` +
+    `<i>Le V est confirme. Aide a la decision, pas un ordre — verifie sur ton graphique.</i>`
+  );
+}
+
+// Met en forme une alerte de divergence RSI confirmee par MACD Zero Lag.
+export function formatDivergence(assetName, timeframe, div) {
+  const dir =
+    div.direction === "bullish"
+      ? "🟢 ACHAT (divergence haussiere)"
+      : "🔴 VENTE (divergence baissiere)";
+  return (
+    `📈 <b>DIVERGENCE RSI ${assetName} — ${timeframe}</b>\n` +
+    `${dir}\n` +
+    `✅ Confirmee par MACD Zero Lag\n` +
+    `RSI actuel : ${div.rsiNow != null ? div.rsiNow.toFixed(1) : "?"}\n\n` +
+    `<b>📍 Niveaux</b>\n` +
+    `Entree : ${round(div.entry)}\n` +
+    `🛑 SL : ${round(div.stopLoss)}\n` +
+    `🎯 TP1 : ${round(div.takeProfits.tp1)} | TP2 : ${round(div.takeProfits.tp2)} | TP3 : ${round(div.takeProfits.tp3)}\n\n` +
+    `<i>Divergence + confirmation MACD ZL. Aide a la decision — verifie sur ton graphique.</i>`
+  );
+}
+
+// Met en forme une alerte de cassure de ligne de tendance.
+export function formatTrendline(assetName, timeframe, tl) {
+  const dir =
+    tl.direction === "bullish"
+      ? "🟢 ACHAT (cassure haussiere d'une resistance oblique)"
+      : "🔴 VENTE (cassure baissiere d'un support oblique)";
+  return (
+    `📐 <b>LIGNE DE TENDANCE ${assetName} — ${timeframe}</b>\n` +
+    `${dir}\n` +
+    `Ligne validee par ${tl.touches} points de contact\n` +
+    `✅ Dans le sens de la tendance de fond\n\n` +
+    `<b>📍 Niveaux</b>\n` +
+    `Entree : ${round(tl.entry)}\n` +
+    `🛑 SL : ${round(tl.stopLoss)}\n` +
+    `🎯 TP1 : ${round(tl.takeProfits.tp1)} | TP2 : ${round(tl.takeProfits.tp2)} | TP3 : ${round(tl.takeProfits.tp3)}\n\n` +
+    `<i>Cassure validee par une vraie bougie. Aide a la decision — verifie sur ton graphique.</i>`
+  );
+}
+
 function round(x) {
   if (x >= 1000) return x.toFixed(1);
   if (x >= 1) return x.toFixed(2);

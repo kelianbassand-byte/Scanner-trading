@@ -28,12 +28,17 @@ export const config = {
     { name: "ETHUSD", source: "coinbase", symbol: "ETH-USD" },
   ],
 
-  // --- Timeframes a scanner pour les ORDER BLOCKS ---
-  timeframes: ["5m", "15m", "1h"],
+  // --- Timeframes a scanner (15 min minimum, jamais en dessous) ---
+  // Utilises pour les 3 techniques : order blocks V/V, divergences RSI,
+  // et triangles.
+  timeframes: ["15m", "1h", "4h"],
 
-  // --- Timeframes a scanner pour les TRIANGLES/BISEAUX ---
-  // Les videos recommandent les grandes unites de temps (4h, daily).
-  triangleTimeframes: ["4h", "1d"],
+  // (conserve pour compat : les triangles utilisent les memes timeframes)
+  triangleTimeframes: ["15m", "1h", "4h"],
+
+  // --- Timeframes pour les LIGNES DE TENDANCE ---
+  // Faustin conseille 1h minimum (2h/daily ideal). 15m trop fragile.
+  trendlineTimeframes: ["1h", "4h"],
 
   // --- Combien de bougies on recupere pour l'analyse ---
   candleLimit: 200,
