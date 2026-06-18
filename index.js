@@ -139,7 +139,9 @@ async function scanOne(asset, timeframe) {
   }
 
   // --- Contexte news (avertissement uniquement) ---
-  await ensureCalendar();
+  // On NE rappelle PAS l'API ici (limite gratuite = 1 requete/jour).
+  // On utilise les events deja recuperes a 8h. S'il est avant 8h ou si
+  // la recuperation a echoue, todayEvents peut etre null -> pas d'avertissement.
   const activeNews = newsWindowActive(todayEvents, new Date(), config.news.windowMinutes);
 
   const lv = config.tradeLevels;
