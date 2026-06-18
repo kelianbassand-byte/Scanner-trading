@@ -119,6 +119,7 @@ export function findRsiDivergence(candles, opts) {
         direction: "bearish",
         entry: lastPrice,
         pivotIndex: priceHighs[1].index,
+        extreme: priceHighs[1].value, // dernier plus-haut -> base du SL
         rsiNow: rsi[i],
         tradeLevels,
       });
@@ -137,6 +138,7 @@ export function findRsiDivergence(candles, opts) {
         direction: "bullish",
         entry: lastPrice,
         pivotIndex: priceLows[1].index,
+        extreme: priceLows[1].value, // dernier plus-bas -> base du SL
         rsiNow: rsi[i],
         tradeLevels,
       });
@@ -147,25 +149,29 @@ export function findRsiDivergence(candles, opts) {
 }
 
 function buildDivergence(p) {
-  const lv = p.tradeLevels || { slPct: 0.5, tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
   const entry = p.entry;
+  // SL au-dela du dernier extreme qui a forme la divergence (structure).
+  // Petite marge de 0,1% pour le bruit/spread.
+  const margin = entry * 0.001;
   let stopLoss, risk, takeProfits;
 
   if (p.direction === "bullish") {
-    stopLoss = entry * (1 - lv.slPct / 100);
+    // SL sous le dernier plus-bas
+    stopLoss = (p.extreme != null ? p.extreme : entry * 0.995) - margin;
     risk = entry - stopLoss;
     takeProfits = {
-      tp1: entry * (1 + lv.tp1Pct / 100),
-      tp2: entry * (1 + lv.tp2Pct / 100),
-      tp3: entry * (1 + lv.tp3Pct / 100),
+      tp1: entry + risk * 1,
+      tp2: entry + risk * 2,
+      tp3: entry + risk * 3,
     };
   } else {
-    stopLoss = entry * (1 + lv.slPct / 100);
+    // SL au-dessus du dernier plus-haut
+    stopLoss = (p.extreme != null ? p.extreme : entry * 1.005) + margin;
     risk = stopLoss - entry;
     takeProfits = {
-      tp1: entry * (1 - lv.tp1Pct / 100),
-      tp2: entry * (1 - lv.tp2Pct / 100),
-      tp3: entry * (1 - lv.tp3Pct / 100),
+      tp1: entry - risk * 1,
+      tp2: entry - risk * 2,
+      tp3: entry - risk * 3,
     };
   }
 

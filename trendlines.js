@@ -108,6 +108,7 @@ export function findTrendlineBreak(candles, opts) {
             kind: "cassure resistance",
             line: { p1, p2 },
             entry: last.close,
+            lineLevel: expectedNow, // niveau de la ligne -> base du SL (reintegration)
             touches,
             tradeLevels,
           });
@@ -132,6 +133,7 @@ export function findTrendlineBreak(candles, opts) {
             kind: "cassure support",
             line: { p1, p2 },
             entry: last.close,
+            lineLevel: expectedNow, // niveau de la ligne -> base du SL (reintegration)
             touches,
             tradeLevels,
           });
@@ -144,25 +146,29 @@ export function findTrendlineBreak(candles, opts) {
 }
 
 function build(p) {
-  const lv = p.tradeLevels || { slPct: 0.5, tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
   const entry = p.entry;
+  // SL = de l'autre cote de la ligne cassee (zone de reintegration = invalidation).
+  // On prend le niveau de la ligne au moment de la cassure + petite marge.
+  const margin = entry * 0.001;
   let stopLoss, risk, takeProfits;
 
   if (p.direction === "bullish") {
-    stopLoss = entry * (1 - lv.slPct / 100);
+    // cassure haussiere : si le prix repasse SOUS la ligne -> invalide
+    stopLoss = (p.lineLevel != null ? p.lineLevel : entry * 0.995) - margin;
     risk = entry - stopLoss;
     takeProfits = {
-      tp1: entry * (1 + lv.tp1Pct / 100),
-      tp2: entry * (1 + lv.tp2Pct / 100),
-      tp3: entry * (1 + lv.tp3Pct / 100),
+      tp1: entry + risk * 1,
+      tp2: entry + risk * 2,
+      tp3: entry + risk * 3,
     };
   } else {
-    stopLoss = entry * (1 + lv.slPct / 100);
+    // cassure baissiere : si le prix repasse AU-DESSUS de la ligne -> invalide
+    stopLoss = (p.lineLevel != null ? p.lineLevel : entry * 1.005) + margin;
     risk = stopLoss - entry;
     takeProfits = {
-      tp1: entry * (1 - lv.tp1Pct / 100),
-      tp2: entry * (1 - lv.tp2Pct / 100),
-      tp3: entry * (1 - lv.tp3Pct / 100),
+      tp1: entry - risk * 1,
+      tp2: entry - risk * 2,
+      tp3: entry - risk * 3,
     };
   }
 

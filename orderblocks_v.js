@@ -145,27 +145,31 @@ export function findOrderBlockVShape(candles, opts) {
   return null;
 }
 
-// Construit l'objet OB avec SL / TP (grille en % du prix d'entree).
+// Construit l'objet OB avec SL base sur la STRUCTURE (comme la video) :
+// SL sous la zone OB (achat) / au-dessus (vente), meches incluses + petite marge.
+// TP = multiples du risque (X1 / X2 / X3).
 function buildOB(p) {
-  const lv = p.tradeLevels || { slPct: 0.5, tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
   const entry = p.entry;
+  // Marge de securite = 10% de la hauteur de la zone OB (pour le spread/meche).
+  const zoneHeight = p.zoneTop - p.zoneBottom;
+  const margin = zoneHeight * 0.1;
   let stopLoss, risk, takeProfits;
 
   if (p.direction === "bullish") {
-    stopLoss = entry * (1 - lv.slPct / 100);
+    stopLoss = p.zoneBottom - margin; // SL sous l'order block
     risk = entry - stopLoss;
     takeProfits = {
-      tp1: entry * (1 + lv.tp1Pct / 100),
-      tp2: entry * (1 + lv.tp2Pct / 100),
-      tp3: entry * (1 + lv.tp3Pct / 100),
+      tp1: entry + risk * 1,
+      tp2: entry + risk * 2,
+      tp3: entry + risk * 3,
     };
   } else {
-    stopLoss = entry * (1 + lv.slPct / 100);
+    stopLoss = p.zoneTop + margin; // SL au-dessus de l'order block
     risk = stopLoss - entry;
     takeProfits = {
-      tp1: entry * (1 - lv.tp1Pct / 100),
-      tp2: entry * (1 - lv.tp2Pct / 100),
-      tp3: entry * (1 - lv.tp3Pct / 100),
+      tp1: entry - risk * 1,
+      tp2: entry - risk * 2,
+      tp3: entry - risk * 3,
     };
   }
 

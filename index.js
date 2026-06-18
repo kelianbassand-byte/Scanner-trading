@@ -191,14 +191,21 @@ async function scanOne(asset, timeframe) {
       if (!alreadyAlerted(key)) {
         await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, timeframe, tri), activeNews));
         alertMemory.set(key, Date.now());
-        // On ouvre aussi un trade de suivi pour le triangle
+        // On ouvre aussi un trade de suivi pour le triangle.
+        // SL = structure de la figure (deja calcule par findTriangles),
+        // TP = multiples du risque (X1/X2/X3).
+        const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
+        const triTP =
+          triDir === "bullish"
+            ? { tp1: tri.entry + tri.risk * 1, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
+            : { tp1: tri.entry - tri.risk * 1, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
         const triSignal = {
           technique: "triangle",
-          direction: tri.breakout === "bullish" ? "bullish" : "bearish",
+          direction: triDir,
           index: lastTime,
           entry: tri.entry,
           stopLoss: tri.stopLoss,
-          takeProfits: buildTriangleTPs(tri, lv),
+          takeProfits: triTP,
         };
         openTrade(asset, timeframe, triSignal);
         console.log(`  >>> ALERTE TRIANGLE ${asset.name} ${timeframe} ${tri.type} ${tri.breakout}`);
@@ -230,16 +237,6 @@ async function scanOne(asset, timeframe) {
       console.log(`  ${asset.name} ${timeframe} (trendline): trade en cours, on attend le SL`);
     }
   }
-}
-
-// Pour le triangle, on aligne les TP sur la grille en % (coherence avec le reste).
-function buildTriangleTPs(tri, lv) {
-  const g = lv || { tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3.0 };
-  const e = tri.entry;
-  if (tri.breakout === "bullish") {
-    return { tp1: e * (1 + g.tp1Pct / 100), tp2: e * (1 + g.tp2Pct / 100), tp3: e * (1 + g.tp3Pct / 100) };
-  }
-  return { tp1: e * (1 - g.tp1Pct / 100), tp2: e * (1 - g.tp2Pct / 100), tp3: e * (1 - g.tp3Pct / 100) };
 }
 
 
