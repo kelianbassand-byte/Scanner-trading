@@ -119,126 +119,131 @@ function withNewsWarning(message, activeNews) {
   );
 }
 
-async function scanOne(asset, timeframe) {
-  const candles = await fetchCandles(asset, timeframe, config.candleLimit, config);
-  if (!candles || candles.length < 60) {
-    console.log(`  ${asset.name} ${timeframe}: pas assez de donnees`);
-    return;
-  }
-  const lastPrice = candles[candles.length - 1].close;
-  const lastCandle = candles[candles.length - 1];
+// Ordre des timeframes du plus petit au plus grand (pour choisir "la plus grande").
+const TF_ORDER = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440 };
+function tfRank(tf) { return TF_ORDER[tf] || 0; }
 
-  // --- 1) Suivi des trades deja ouverts (toutes techniques) ---
-  const moveSl = config.tradeLevels?.moveSlToEntryAtTp1;
-  const updates = updateTradesFor(asset.name, timeframe, lastCandle, moveSl);
-  for (const { trade, events } of updates) {
-    for (const ev of events) {
-      await sendTelegram(config, formatTradeEvent(trade, ev));
-      console.log(`  >>> ${ev} ${asset.name} ${timeframe} ${trade.technique} (suivi)`);
+// Scanne un actif sur TOUS ses timeframes, puis regroupe par technique :
+// si une meme technique donne un signal du meme sens sur plusieurs UT,
+// on ne garde que la PLUS GRANDE unite (1 seule notif + 1 seul trade).
+async function scanAsset(asset) {
+  // 1) Recuperer les bougies de chaque timeframe (une seule fois).
+  const dataByTf = {};
+  for (const tf of config.timeframes) {
+    try {
+      const candles = await fetchCandles(asset, tf, config.candleLimit, config);
+      if (candles && candles.length >= 60) dataByTf[tf] = candles;
+      else console.log(`  ${asset.name} ${tf}: pas assez de donnees`);
+    } catch (e) {
+      console.error(`  ${asset.name} ${tf}: erreur -> ${e.message}`);
     }
   }
 
-  // --- Contexte news (avertissement uniquement) ---
-  // On NE rappelle PAS l'API ici (limite gratuite = 1 requete/jour).
-  // On utilise les events deja recuperes a 8h. S'il est avant 8h ou si
-  // la recuperation a echoue, todayEvents peut etre null -> pas d'avertissement.
-  const activeNews = newsWindowActive(todayEvents, new Date(), config.news.windowMinutes);
+  // 2) Suivi des trades deja ouverts, sur chaque timeframe disponible.
+  const moveSl = config.tradeLevels?.moveSlToEntryAtTp1;
+  for (const tf of Object.keys(dataByTf)) {
+    const lastCandle = dataByTf[tf][dataByTf[tf].length - 1];
+    const updates = updateTradesFor(asset.name, tf, lastCandle, moveSl);
+    for (const { trade, events } of updates) {
+      for (const ev of events) {
+        await sendTelegram(config, formatTradeEvent(trade, ev));
+        console.log(`  >>> ${ev} ${asset.name} ${tf} ${trade.technique} (suivi)`);
+      }
+    }
+  }
 
+  // 3) Contexte news (avertissement uniquement, pas d'appel API ici).
+  const activeNews = newsWindowActive(todayEvents, new Date(), config.news.windowMinutes);
   const lv = config.tradeLevels;
 
-  // ====== TECHNIQUE 1 : ORDER BLOCK V / V inverse ======
-  if (!hasOpenTrade(asset.name, timeframe, "ob_vshape")) {
+  // 4) Pour chaque technique, collecter les signaux sur tous les TF.
+  //    On stocke { tf, signal } et on triera par taille de TF.
+  const collected = { ob_vshape: [], rsi_divergence: [], triangle: [], trendline: [] };
+
+  for (const tf of Object.keys(dataByTf)) {
+    const candles = dataByTf[tf];
+
+    // -- Order Block V/V --
     const ob = findOrderBlockVShape(candles, { tradeLevels: lv });
-    if (ob && ob.trendOk) {
-      const key = `OBV|${asset.name}|${timeframe}|${ob.index}`;
-      if (!alreadyAlerted(key)) {
-        await sendTelegram(config, withNewsWarning(formatOrderBlockV(asset.name, timeframe, ob), activeNews));
-        alertMemory.set(key, Date.now());
-        openTrade(asset, timeframe, ob);
-        console.log(`  >>> ALERTE OB-V ${asset.name} ${timeframe} ${ob.direction}`);
-      }
-    } else {
-      console.log(`  ${asset.name} ${timeframe} (OB-V): aucun signal`);
-    }
-  } else {
-    console.log(`  ${asset.name} ${timeframe} (OB-V): trade en cours, on attend le SL`);
-  }
+    if (ob && ob.trendOk) collected.ob_vshape.push({ tf, signal: ob });
 
-  // ====== TECHNIQUE 2 : DIVERGENCE RSI + MACD Zero Lag ======
-  if (!hasOpenTrade(asset.name, timeframe, "rsi_divergence")) {
+    // -- Divergence RSI + MACD Zero Lag --
     const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv });
-    if (div) {
-      const key = `DIV|${asset.name}|${timeframe}|${div.index}`;
-      if (!alreadyAlerted(key)) {
-        await sendTelegram(config, withNewsWarning(formatDivergence(asset.name, timeframe, div), activeNews));
-        alertMemory.set(key, Date.now());
-        openTrade(asset, timeframe, div);
-        console.log(`  >>> ALERTE DIV ${asset.name} ${timeframe} ${div.direction}`);
-      }
-    } else {
-      console.log(`  ${asset.name} ${timeframe} (DIV): aucun signal`);
-    }
-  } else {
-    console.log(`  ${asset.name} ${timeframe} (DIV): trade en cours, on attend le SL`);
-  }
+    if (div) collected.rsi_divergence.push({ tf, signal: div });
 
-  // ====== TECHNIQUE 3 : TRIANGLE / BISEAU ======
-  if (!hasOpenTrade(asset.name, timeframe, "triangle")) {
+    // -- Triangle --
     const tri = findTriangles(candles, {});
     if (tri && tri.trendOk) {
-      const lastTime = candles[candles.length - 1].time;
-      const key = `TRI|${asset.name}|${timeframe}|${lastTime}`;
-      if (!alreadyAlerted(key)) {
-        await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, timeframe, tri), activeNews));
-        alertMemory.set(key, Date.now());
-        // On ouvre aussi un trade de suivi pour le triangle.
-        // SL = structure de la figure (deja calcule par findTriangles),
-        // TP = multiples du risque (X1/X2/X3).
-        const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
-        const triTP =
-          triDir === "bullish"
-            ? { tp1: tri.entry + tri.risk * 1, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
-            : { tp1: tri.entry - tri.risk * 1, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
-        const triSignal = {
-          technique: "triangle",
-          direction: triDir,
-          index: lastTime,
-          entry: tri.entry,
-          stopLoss: tri.stopLoss,
-          takeProfits: triTP,
-        };
-        openTrade(asset, timeframe, triSignal);
-        console.log(`  >>> ALERTE TRIANGLE ${asset.name} ${timeframe} ${tri.type} ${tri.breakout}`);
-      }
-    } else {
-      console.log(`  ${asset.name} ${timeframe} (triangle): aucune cassure`);
+      const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
+      const triTP =
+        triDir === "bullish"
+          ? { tp1: tri.entry + tri.risk, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
+          : { tp1: tri.entry - tri.risk, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
+      const triSignal = {
+        technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
+        entry: tri.entry, stopLoss: tri.stopLoss, takeProfits: triTP, _tri: tri,
+      };
+      collected.triangle.push({ tf, signal: triSignal });
     }
-  } else {
-    console.log(`  ${asset.name} ${timeframe} (triangle): trade en cours, on attend le SL`);
+
+    // -- Ligne de tendance (seulement 1h/4h) --
+    if (config.trendlineTimeframes.includes(tf)) {
+      const tl = findTrendlineBreak(candles, { tradeLevels: lv });
+      if (tl) collected.trendline.push({ tf, signal: tl });
+    }
   }
 
-  // ====== TECHNIQUE 4 : LIGNES DE TENDANCE (cassure) ======
-  // Seulement sur les timeframes conseilles (1h, 4h) — pas en 15m.
-  if (config.trendlineTimeframes.includes(timeframe)) {
-    if (!hasOpenTrade(asset.name, timeframe, "trendline")) {
-      const tl = findTrendlineBreak(candles, { tradeLevels: lv });
-      if (tl) {
-        const key = `TL|${asset.name}|${timeframe}|${tl.index}|${tl.direction}`;
-        if (!alreadyAlerted(key)) {
-          await sendTelegram(config, withNewsWarning(formatTrendline(asset.name, timeframe, tl), activeNews));
-          alertMemory.set(key, Date.now());
-          openTrade(asset, timeframe, tl);
-          console.log(`  >>> ALERTE TRENDLINE ${asset.name} ${timeframe} ${tl.direction}`);
-        }
-      } else {
-        console.log(`  ${asset.name} ${timeframe} (trendline): aucune cassure`);
-      }
-    } else {
-      console.log(`  ${asset.name} ${timeframe} (trendline): trade en cours, on attend le SL`);
-    }
-  }
+  // 5) Pour chaque technique : regrouper par SENS, garder la plus grande UT.
+  await emitGrouped(asset, collected.ob_vshape, "ob_vshape", activeNews,
+    (a, tf, s) => formatOrderBlockV(a, tf, s));
+  await emitGrouped(asset, collected.rsi_divergence, "rsi_divergence", activeNews,
+    (a, tf, s) => formatDivergence(a, tf, s));
+  await emitGrouped(asset, collected.triangle, "triangle", activeNews,
+    (a, tf, s) => formatTriangle(a, tf, s._tri));
+  await emitGrouped(asset, collected.trendline, "trendline", activeNews,
+    (a, tf, s) => formatTrendline(a, tf, s));
 }
 
+// Prend la liste des signaux d'une technique (sur plusieurs TF), et pour
+// chaque sens (haussier/baissier) ne garde QUE la plus grande unite de temps.
+async function emitGrouped(asset, list, technique, activeNews, formatFn) {
+  if (!list || list.length === 0) {
+    console.log(`  ${asset.name} (${technique}): aucun signal`);
+    return;
+  }
+  // Grouper par direction
+  const byDir = {};
+  for (const item of list) {
+    const d = item.signal.direction;
+    if (!byDir[d] || tfRank(item.tf) > tfRank(byDir[d].tf)) byDir[d] = item;
+  }
+
+  for (const dir of Object.keys(byDir)) {
+    const { tf, signal } = byDir[dir];
+
+    // Anti-doublon : trade deja ouvert sur cette technique a CE timeframe ?
+    if (hasOpenTrade(asset.name, tf, technique)) {
+      console.log(`  ${asset.name} ${tf} (${technique}): trade en cours, on attend le SL`);
+      continue;
+    }
+    const key = `${technique}|${asset.name}|${tf}|${dir}|${signal.index}`;
+    if (alreadyAlerted(key)) {
+      console.log(`  ${asset.name} ${tf} (${technique}): deja alerte`);
+      continue;
+    }
+
+    // Combien de timeframes confirmaient ce meme signal ?
+    const confirms = list.filter((x) => x.signal.direction === dir).map((x) => x.tf);
+    let msg = formatFn(asset.name, tf, signal);
+    if (confirms.length > 1) {
+      msg += `\n\n<i>Signal confirme sur ${confirms.length} unites (${confirms.join(", ")}). Notif sur la plus grande : ${tf}.</i>`;
+    }
+    await sendTelegram(config, withNewsWarning(msg, activeNews));
+    alertMemory.set(key, Date.now());
+    openTrade(asset, tf, signal);
+    console.log(`  >>> ALERTE ${technique} ${asset.name} ${tf} ${dir}${confirms.length > 1 ? " (regroupe " + confirms.length + " UT)" : ""}`);
+  }
+}
 
 async function scanAll() {
   const stamp = new Date().toISOString();
@@ -252,12 +257,10 @@ async function scanAll() {
   }
 
   for (const asset of config.assets) {
-    for (const tf of config.timeframes) {
-      try {
-        await scanOne(asset, tf);
-      } catch (e) {
-        console.error(`  ${asset.name} ${tf}: erreur -> ${e.message}`);
-      }
+    try {
+      await scanAsset(asset);
+    } catch (e) {
+      console.error(`  ${asset.name}: erreur -> ${e.message}`);
     }
   }
 }
