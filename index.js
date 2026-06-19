@@ -120,7 +120,7 @@ function withNewsWarning(message, activeNews) {
 }
 
 // Ordre des timeframes du plus petit au plus grand (pour choisir "la plus grande").
-const TF_ORDER = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "1d": 1440 };
+const TF_ORDER = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "1d": 1440 };
 function tfRank(tf) { return TF_ORDER[tf] || 0; }
 
 // Scanne un actif sur TOUS ses timeframes, puis regroupe par technique :
@@ -128,8 +128,12 @@ function tfRank(tf) { return TF_ORDER[tf] || 0; }
 // on ne garde que la PLUS GRANDE unite (1 seule notif + 1 seul trade).
 async function scanAsset(asset) {
   // 1) Recuperer les bougies de chaque timeframe (une seule fois).
+  //    On prend l'UNION des timeframes utilises par les techniques.
+  const allTfs = Array.from(
+    new Set([...config.timeframes, ...config.triangleTimeframes, ...config.trendlineTimeframes])
+  );
   const dataByTf = {};
-  for (const tf of config.timeframes) {
+  for (const tf of allTfs) {
     try {
       const candles = await fetchCandles(asset, tf, config.candleLimit, config);
       if (candles && candles.length >= 60) dataByTf[tf] = candles;
@@ -163,27 +167,31 @@ async function scanAsset(asset) {
   for (const tf of Object.keys(dataByTf)) {
     const candles = dataByTf[tf];
 
-    // -- Order Block V/V --
-    const ob = findOrderBlockVShape(candles, { tradeLevels: lv });
-    if (ob && ob.trendOk) collected.ob_vshape.push({ tf, signal: ob });
+    // -- Order Block V/V (timeframes standard 15m/1h/4h) --
+    if (config.timeframes.includes(tf)) {
+      const ob = findOrderBlockVShape(candles, { tradeLevels: lv });
+      if (ob && ob.trendOk) collected.ob_vshape.push({ tf, signal: ob });
 
-    // -- Divergence RSI + MACD Zero Lag --
-    const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv });
-    if (div) collected.rsi_divergence.push({ tf, signal: div });
+      // -- Divergence RSI + MACD Zero Lag (memes timeframes) --
+      const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv });
+      if (div) collected.rsi_divergence.push({ tf, signal: div });
+    }
 
-    // -- Triangle --
-    const tri = findTriangles(candles, {});
-    if (tri && tri.trendOk) {
-      const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
-      const triTP =
-        triDir === "bullish"
-          ? { tp1: tri.entry + tri.risk, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
-          : { tp1: tri.entry - tri.risk, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
-      const triSignal = {
-        technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
-        entry: tri.entry, stopLoss: tri.stopLoss, takeProfits: triTP, _tri: tri,
-      };
-      collected.triangle.push({ tf, signal: triSignal });
+    // -- Triangle (seulement 4h/6h/journalier) --
+    if (config.triangleTimeframes.includes(tf)) {
+      const tri = findTriangles(candles, {});
+      if (tri && tri.trendOk) {
+        const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
+        const triTP =
+          triDir === "bullish"
+            ? { tp1: tri.entry + tri.risk, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
+            : { tp1: tri.entry - tri.risk, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
+        const triSignal = {
+          technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
+          entry: tri.entry, stopLoss: tri.stopLoss, takeProfits: triTP, _tri: tri,
+        };
+        collected.triangle.push({ tf, signal: triSignal });
+      }
     }
 
     // -- Ligne de tendance (seulement 1h/4h) --

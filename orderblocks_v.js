@@ -24,6 +24,8 @@
 //  Concu pour 15 min et plus (jamais en dessous).
 // ============================================================
 
+import { hasSolidBody, confirmsAbove, confirmsBelow } from "./confirm.js";
+
 // --- Moyenne mobile exponentielle, filtre de tendance de fond ---
 function computeEMA(closes, period) {
   const ema = new Array(closes.length).fill(null);
@@ -99,6 +101,11 @@ export function findOrderBlockVShape(candles, opts) {
       // au-dessus de l'EMA (tendance haussiere de fond).
       const trendOk = lastEma == null ? true : lastPrice >= lastEma;
 
+      // CONFIRMATION : la derniere bougie doit etre verte nette et
+      // cloturer au-dessus du haut de la zone OB (retournement confirme).
+      const lastCandle = candles[candles.length - 1];
+      if (!confirmsAbove(lastCandle, ob.high, 0.5)) continue;
+
       return buildOB({
         direction: "bullish",
         zoneTop: ob.high, // meches incluses
@@ -126,6 +133,10 @@ export function findOrderBlockVShape(candles, opts) {
       if (obIndex === -1) continue;
       const ob = candles[obIndex];
       const trendOk = lastEma == null ? true : lastPrice <= lastEma;
+
+      // CONFIRMATION : derniere bougie rouge nette cloturant sous le bas de l'OB.
+      const lastCandleB = candles[candles.length - 1];
+      if (!confirmsBelow(lastCandleB, ob.low, 0.5)) continue;
 
       return buildOB({
         direction: "bearish",

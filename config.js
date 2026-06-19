@@ -29,12 +29,13 @@ export const config = {
   ],
 
   // --- Timeframes a scanner (15 min minimum, jamais en dessous) ---
-  // Utilises pour les 3 techniques : order blocks V/V, divergences RSI,
-  // et triangles.
+  // Utilises pour order blocks V/V et divergences RSI.
   timeframes: ["15m", "1h", "4h"],
 
-  // (conserve pour compat : les triangles utilisent les memes timeframes)
-  triangleTimeframes: ["15m", "1h", "4h"],
+  // --- Timeframes pour les TRIANGLES (gros mouvements seulement) ---
+  // 6h et journalier. Note : Coinbase n'a pas de vrai 4h (sa granularite
+  // au-dessus de 1h est directement 6h), donc 6h couvre le "4h/6h".
+  triangleTimeframes: ["6h", "1d"],
 
   // --- Timeframes pour les LIGNES DE TENDANCE ---
   // Faustin conseille 1h minimum (2h/daily ideal). 15m trop fragile.

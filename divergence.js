@@ -25,6 +25,7 @@
 // ============================================================
 
 import { computeRSI } from "./rsi.js";
+import { hasSolidBody } from "./confirm.js";
 
 // --- EMA simple ---
 function ema(values, period) {
@@ -114,7 +115,9 @@ export function findRsiDivergence(candles, opts) {
     const priceUp = priceHighs[1].value > priceHighs[0].value;
     const rsiDown = rsiAtPriceHighs[1] < rsiAtPriceHighs[0];
     const macdConfirms = macdNow < sigNow; // MACD ZL baissier
-    if (priceUp && rsiDown && macdConfirms) {
+    const lastC = candles[candles.length - 1];
+    const candleConfirms = lastC.close < lastC.open && hasSolidBody(lastC, 0.5);
+    if (priceUp && rsiDown && macdConfirms && candleConfirms) {
       return buildDivergence({
         direction: "bearish",
         entry: lastPrice,
@@ -133,7 +136,9 @@ export function findRsiDivergence(candles, opts) {
     const priceDown = priceLows[1].value < priceLows[0].value;
     const rsiUp = rsiAtPriceLows[1] > rsiAtPriceLows[0];
     const macdConfirms = macdNow > sigNow; // MACD ZL haussier
-    if (priceDown && rsiUp && macdConfirms) {
+    const lastCb = candles[candles.length - 1];
+    const candleConfirms = lastCb.close > lastCb.open && hasSolidBody(lastCb, 0.5);
+    if (priceDown && rsiUp && macdConfirms && candleConfirms) {
       return buildDivergence({
         direction: "bullish",
         entry: lastPrice,
