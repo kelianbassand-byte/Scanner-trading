@@ -277,8 +277,26 @@ async function main() {
   console.log("=== Scanner trading demarre ===");
   console.log(`Actifs: ${config.assets.map((a) => a.name).join(", ")}`);
   console.log(`Timeframes (15m min): ${config.timeframes.join(", ")}`);
-  console.log(`Techniques: Order Block V/V, Divergence RSI+MACD ZeroLag, Triangles, Lignes de tendance (1h/4h)`);
+  console.log(`Triangles: ${config.triangleTimeframes.join(", ")}`);
+  console.log(`Techniques: Order Block V/V, Divergence RSI+MACD ZeroLag, Triangles, Lignes de tendance`);
   console.log(`Scan toutes les ${config.scanIntervalSec}s\n`);
+
+  // --- TEST CALENDRIER ---
+  // Si la variable TEST_CALENDAR=1, on teste le calendrier tout de suite
+  // (sans attendre 8h) et on envoie le resultat sur Telegram.
+  // ATTENTION : consomme la requete quotidienne gratuite. A retirer apres test.
+  if (process.env.TEST_CALENDAR === "1") {
+    console.log(">>> MODE TEST CALENDRIER : requete immediate...");
+    try {
+      const events = await fetchEconomicCalendar(config);
+      const n = events === null ? "ECHEC" : events.length;
+      console.log(`>>> Calendrier test : ${n} news recuperees`);
+      await sendTelegram(config, formatCalendar(events));
+      console.log(">>> Message calendrier envoye sur Telegram");
+    } catch (e) {
+      console.error(`>>> Test calendrier erreur : ${e.message}`);
+    }
+  }
 
   await scanAll();
   setInterval(scanAll, config.scanIntervalSec * 1000);
