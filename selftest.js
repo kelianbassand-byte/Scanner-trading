@@ -25,14 +25,17 @@ const wave = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.3) * 5 + 
 const macd = computeMacdZeroLag(wave);
 check("MACD Zero Lag renvoie des valeurs", macd.macd[macd.macd.length - 1] != null);
 
-// Test 3 : Order Block V haussier
+// Test 3 : Order Block V haussier (mouvement resserre pour SL < 3%)
 const candles = []; let t = 0; const step = 900000; let p = 100;
-for (let i = 0; i < 40; i++) { candles.push(c(t, p, p + 0.5, p + 0.7, p - 0.3)); p += 0.5; t += step; }
-let d = 120;
-for (let i = 0; i < 4; i++) { candles.push(c(t, d, d - 2, d + 0.3, d - 2.2)); d -= 2; t += step; }
-let u = d;
-for (let i = 0; i < 5; i++) { candles.push(c(t, u, u + 2.5, u + 2.7, u - 0.3)); u += 2.5; t += step; }
-const ob = findOrderBlockVShape(candles, { tradeLevels: { slPct: 0.5, tp1Pct: 0.75, tp2Pct: 1.5, tp3Pct: 3 } });
+for (let i = 0; i < 40; i++) { candles.push(c(t, p, p + 0.2, p + 0.3, p - 0.15)); p += 0.2; t += step; }
+// creux en V peu profond avec un point bas UNIQUE
+let d = 108;
+for (let i = 0; i < 4; i++) { candles.push(c(t, d, d - 0.5, d + 0.1, d - 0.6)); d -= 0.5; t += step; }
+// bougie creux la plus basse (unique)
+candles.push(c(t, d, d - 0.3, d + 0.1, d - 0.8)); t += step;
+let u = d - 0.3;
+for (let i = 0; i < 3; i++) { candles.push(c(t, u, u + 0.4, u + 0.5, u - 0.1)); u += 0.4; t += step; }
+const ob = findOrderBlockVShape(candles, {});
 check("Order Block V haussier detecte", ob && ob.direction === "bullish");
 check("OB-V dans le sens de la tendance", ob && ob.trendOk === true);
 check("OB-V a une zone et des TP", ob && ob.zoneTop > ob.zoneBottom && ob.takeProfits.tp1 > ob.entry);

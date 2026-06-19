@@ -24,7 +24,7 @@
 //  Concu pour 15 min et plus (jamais en dessous).
 // ============================================================
 
-import { hasSolidBody, confirmsAbove, confirmsBelow } from "./confirm.js";
+import { hasSolidBody, confirmsAbove, confirmsBelow, buildStructuralLevels } from "./confirm.js";
 
 // --- Moyenne mobile exponentielle, filtre de tendance de fond ---
 function computeEMA(closes, period) {
@@ -156,33 +156,14 @@ export function findOrderBlockVShape(candles, opts) {
   return null;
 }
 
-// Construit l'objet OB avec SL base sur la STRUCTURE (comme la video) :
-// SL sous la zone OB (achat) / au-dessus (vente), meches incluses + petite marge.
-// TP = multiples du risque (X1 / X2 / X3).
+// Construit l'objet OB avec SL "comme Faustin" : sous le dernier plus-bas
+// recent (achat) / au-dessus du dernier plus-haut (vente). TP en X1/X2/X3.
+// Retourne null si pas de niveau coherent ou si le SL serait trop loin (>3%).
 function buildOB(p) {
   const entry = p.entry;
-  // Marge de securite = 10% de la hauteur de la zone OB (pour le spread/meche).
-  const zoneHeight = p.zoneTop - p.zoneBottom;
-  const margin = zoneHeight * 0.1;
-  let stopLoss, risk, takeProfits;
-
-  if (p.direction === "bullish") {
-    stopLoss = p.zoneBottom - margin; // SL sous l'order block
-    risk = entry - stopLoss;
-    takeProfits = {
-      tp1: entry + risk * 1,
-      tp2: entry + risk * 2,
-      tp3: entry + risk * 3,
-    };
-  } else {
-    stopLoss = p.zoneTop + margin; // SL au-dessus de l'order block
-    risk = stopLoss - entry;
-    takeProfits = {
-      tp1: entry - risk * 1,
-      tp2: entry - risk * 2,
-      tp3: entry - risk * 3,
-    };
-  }
+  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20 });
+  if (!levels) return null; // SL trop loin ou pas de pivot -> on ne prend pas le trade
+  const { stopLoss, risk, takeProfits } = levels;
 
   return {
     technique: "ob_vshape",

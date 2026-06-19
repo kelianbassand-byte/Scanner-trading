@@ -25,7 +25,7 @@
 // ============================================================
 
 import { computeRSI } from "./rsi.js";
-import { hasSolidBody } from "./confirm.js";
+import { hasSolidBody, buildStructuralLevels } from "./confirm.js";
 
 // --- EMA simple ---
 function ema(values, period) {
@@ -124,6 +124,7 @@ export function findRsiDivergence(candles, opts) {
         pivotIndex: priceHighs[1].index,
         extreme: priceHighs[1].value, // dernier plus-haut -> base du SL
         rsiNow: rsi[i],
+        candles,
         tradeLevels,
       });
     }
@@ -145,6 +146,7 @@ export function findRsiDivergence(candles, opts) {
         pivotIndex: priceLows[1].index,
         extreme: priceLows[1].value, // dernier plus-bas -> base du SL
         rsiNow: rsi[i],
+        candles,
         tradeLevels,
       });
     }
@@ -155,30 +157,11 @@ export function findRsiDivergence(candles, opts) {
 
 function buildDivergence(p) {
   const entry = p.entry;
-  // SL au-dela du dernier extreme qui a forme la divergence (structure).
-  // Petite marge de 0,1% pour le bruit/spread.
-  const margin = entry * 0.001;
-  let stopLoss, risk, takeProfits;
-
-  if (p.direction === "bullish") {
-    // SL sous le dernier plus-bas
-    stopLoss = (p.extreme != null ? p.extreme : entry * 0.995) - margin;
-    risk = entry - stopLoss;
-    takeProfits = {
-      tp1: entry + risk * 1,
-      tp2: entry + risk * 2,
-      tp3: entry + risk * 3,
-    };
-  } else {
-    // SL au-dessus du dernier plus-haut
-    stopLoss = (p.extreme != null ? p.extreme : entry * 1.005) + margin;
-    risk = stopLoss - entry;
-    takeProfits = {
-      tp1: entry - risk * 1,
-      tp2: entry - risk * 2,
-      tp3: entry - risk * 3,
-    };
-  }
+  // SL "comme Faustin" : sous le dernier plus-bas / au-dessus du dernier
+  // plus-haut recent. Annule si trop loin (>3%).
+  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20 });
+  if (!levels) return null;
+  const { stopLoss, risk, takeProfits } = levels;
 
   return {
     technique: "rsi_divergence",

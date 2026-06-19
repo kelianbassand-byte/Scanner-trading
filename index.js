@@ -30,6 +30,7 @@ import {
   formatCalendar,
 } from "./calendar.js";
 import { openTrade, updateTradesFor, hasOpenTrade } from "./trades.js";
+import { buildStructuralLevels } from "./confirm.js";
 
 // Cache du calendrier du jour (recupere une fois, reutilise pendant la journee)
 let todayEvents = null; // tableau d'events | null si pas encore recupere
@@ -182,15 +183,15 @@ async function scanAsset(asset) {
       const tri = findTriangles(candles, {});
       if (tri && tri.trendOk) {
         const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
-        const triTP =
-          triDir === "bullish"
-            ? { tp1: tri.entry + tri.risk, tp2: tri.entry + tri.risk * 2, tp3: tri.entry + tri.risk * 3 }
-            : { tp1: tri.entry - tri.risk, tp2: tri.entry - tri.risk * 2, tp3: tri.entry - tri.risk * 3 };
-        const triSignal = {
-          technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
-          entry: tri.entry, stopLoss: tri.stopLoss, takeProfits: triTP, _tri: tri,
-        };
-        collected.triangle.push({ tf, signal: triSignal });
+        // SL "comme Faustin" : dernier pivot de structure, annule si >3%.
+        const lvls = buildStructuralLevels(triDir, tri.entry, candles, { maxRiskPct: 3, lookback: 20 });
+        if (lvls) {
+          const triSignal = {
+            technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
+            entry: tri.entry, stopLoss: lvls.stopLoss, takeProfits: lvls.takeProfits, _tri: tri,
+          };
+          collected.triangle.push({ tf, signal: triSignal });
+        }
       }
     }
 

@@ -16,6 +16,8 @@
 //  -> on l'utilise donc en 1h et 4h seulement (voir config).
 // ============================================================
 
+import { buildStructuralLevels } from "./confirm.js";
+
 // --- Pivots hauts et bas (sommets/creux locaux) ---
 function findPivots(candles, left = 3, right = 3) {
   const highs = [];
@@ -110,6 +112,7 @@ export function findTrendlineBreak(candles, opts) {
             entry: last.close,
             lineLevel: expectedNow, // niveau de la ligne -> base du SL (reintegration)
             touches,
+            candles,
             tradeLevels,
           });
         }
@@ -135,6 +138,7 @@ export function findTrendlineBreak(candles, opts) {
             entry: last.close,
             lineLevel: expectedNow, // niveau de la ligne -> base du SL (reintegration)
             touches,
+            candles,
             tradeLevels,
           });
         }
@@ -147,30 +151,11 @@ export function findTrendlineBreak(candles, opts) {
 
 function build(p) {
   const entry = p.entry;
-  // SL = de l'autre cote de la ligne cassee (zone de reintegration = invalidation).
-  // On prend le niveau de la ligne au moment de la cassure + petite marge.
-  const margin = entry * 0.001;
-  let stopLoss, risk, takeProfits;
-
-  if (p.direction === "bullish") {
-    // cassure haussiere : si le prix repasse SOUS la ligne -> invalide
-    stopLoss = (p.lineLevel != null ? p.lineLevel : entry * 0.995) - margin;
-    risk = entry - stopLoss;
-    takeProfits = {
-      tp1: entry + risk * 1,
-      tp2: entry + risk * 2,
-      tp3: entry + risk * 3,
-    };
-  } else {
-    // cassure baissiere : si le prix repasse AU-DESSUS de la ligne -> invalide
-    stopLoss = (p.lineLevel != null ? p.lineLevel : entry * 1.005) + margin;
-    risk = stopLoss - entry;
-    takeProfits = {
-      tp1: entry - risk * 1,
-      tp2: entry - risk * 2,
-      tp3: entry - risk * 3,
-    };
-  }
+  // SL "comme Faustin" : sous le dernier plus-bas / au-dessus du dernier
+  // plus-haut recent. Annule si trop loin (>3%).
+  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20 });
+  if (!levels) return null;
+  const { stopLoss, risk, takeProfits } = levels;
 
   return {
     technique: "trendline",
