@@ -92,6 +92,7 @@ export function findRsiDivergence(candles, opts) {
   const {
     rsiPeriod = 14,
     tradeLevels,
+    minTp1Distance,
   } = opts || {};
 
   if (candles.length < 40) return null;
@@ -126,6 +127,7 @@ export function findRsiDivergence(candles, opts) {
         rsiNow: rsi[i],
         candles,
         tradeLevels,
+        minTp1Distance,
       });
     }
   }
@@ -148,6 +150,7 @@ export function findRsiDivergence(candles, opts) {
         rsiNow: rsi[i],
         candles,
         tradeLevels,
+        minTp1Distance,
       });
     }
   }
@@ -159,7 +162,7 @@ function buildDivergence(p) {
   const entry = p.entry;
   // SL "comme Faustin" : sous le dernier plus-bas / au-dessus du dernier
   // plus-haut recent. Annule si trop loin (>3%).
-  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20 });
+  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20, minTp1Distance: p.minTp1Distance });
   if (!levels) return null;
   const { stopLoss, risk, takeProfits } = levels;
 

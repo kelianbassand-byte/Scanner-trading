@@ -66,6 +66,7 @@ export function findOrderBlockVShape(candles, opts) {
     pivotRight = 3, // bougies de remontee apres le creux (confirme le V)
     emaPeriod = 50, // tendance de fond
     tradeLevels,
+    minTp1Distance,
   } = opts || {};
 
   if (candles.length < pivotLeft + pivotRight + 5) return null;
@@ -117,6 +118,7 @@ export function findOrderBlockVShape(candles, opts) {
         lastEma,
         candles,
         tradeLevels,
+        minTp1Distance,
       });
     }
 
@@ -149,6 +151,7 @@ export function findOrderBlockVShape(candles, opts) {
         lastEma,
         candles,
         tradeLevels,
+        minTp1Distance,
       });
     }
   }
@@ -161,7 +164,7 @@ export function findOrderBlockVShape(candles, opts) {
 // Retourne null si pas de niveau coherent ou si le SL serait trop loin (>3%).
 function buildOB(p) {
   const entry = p.entry;
-  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20 });
+  const levels = buildStructuralLevels(p.direction, entry, p.candles, { maxRiskPct: 3, lookback: 20, minTp1Distance: p.minTp1Distance });
   if (!levels) return null; // SL trop loin ou pas de pivot -> on ne prend pas le trade
   const { stopLoss, risk, takeProfits } = levels;
 

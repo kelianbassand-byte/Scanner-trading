@@ -146,5 +146,12 @@ export function buildStructuralLevels(direction, entry, candles, opts = {}) {
     }
   }
 
+  // Filtre distance minimale du TP1 : si TP1 est trop proche de l'entree
+  // (ex: < 300$ pour le BTC), le trade ne vaut pas le coup -> on annule.
+  if (opts.minTp1Distance != null) {
+    const tp1Distance = Math.abs(takeProfits.tp1 - entry);
+    if (tp1Distance < opts.minTp1Distance) return null;
+  }
+
   return { stopLoss, risk, takeProfits };
 }

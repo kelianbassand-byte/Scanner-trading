@@ -24,8 +24,7 @@ export const config = {
   // L'or (XAUUSD) est desactive car les donnees gratuites sont en retard.
   // On garde le Bitcoin seul (Binance = temps reel fiable).
   assets: [
-    { name: "BTCUSD", source: "coinbase", symbol: "BTC-USD" },
-    { name: "ETHUSD", source: "coinbase", symbol: "ETH-USD" },
+    { name: "BTCUSD", source: "coinbase", symbol: "BTC-USD", minTp1Distance: 300 },
   ],
 
   // --- Timeframes a scanner (15 min minimum, jamais en dessous) ---

@@ -170,11 +170,11 @@ async function scanAsset(asset) {
 
     // -- Order Block V/V (timeframes standard 15m/1h/4h) --
     if (config.timeframes.includes(tf)) {
-      const ob = findOrderBlockVShape(candles, { tradeLevels: lv });
+      const ob = findOrderBlockVShape(candles, { tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
       if (ob && ob.trendOk) collected.ob_vshape.push({ tf, signal: ob });
 
       // -- Divergence RSI + MACD Zero Lag (memes timeframes) --
-      const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv });
+      const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
       if (div) collected.rsi_divergence.push({ tf, signal: div });
     }
 
@@ -184,7 +184,7 @@ async function scanAsset(asset) {
       if (tri && tri.trendOk) {
         const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
         // SL "comme Faustin" : dernier pivot de structure, annule si >3%.
-        const lvls = buildStructuralLevels(triDir, tri.entry, candles, { maxRiskPct: 3, lookback: 20 });
+        const lvls = buildStructuralLevels(triDir, tri.entry, candles, { maxRiskPct: 3, lookback: 20, minTp1Distance: asset.minTp1Distance });
         if (lvls) {
           const triSignal = {
             technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
@@ -197,7 +197,7 @@ async function scanAsset(asset) {
 
     // -- Ligne de tendance (seulement 1h/4h) --
     if (config.trendlineTimeframes.includes(tf)) {
-      const tl = findTrendlineBreak(candles, { tradeLevels: lv });
+      const tl = findTrendlineBreak(candles, { tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
       if (tl) collected.trendline.push({ tf, signal: tl });
     }
   }
