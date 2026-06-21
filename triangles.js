@@ -102,8 +102,9 @@ export function findTriangles(candles, opts) {
   const figureTop = Math.max(...lastHighs.map((h) => h.price));
   const figureBottom = Math.min(...lastLows.map((l) => l.price));
 
-  // --- Detecter la cassure avec une VRAIE bougie ---
-  // On regarde la derniere bougie cloturee.
+  // --- Detecter la cassure : 2 niveaux ---
+  //  - "wick"  : une MECHE depasse la figure (alerte precoce)
+  //  - "close" : une bougie COMPLETE cloture dehors (confirmation)
   const last = candles[candles.length - 1];
   const body = Math.abs(last.close - last.open);
   const range = last.high - last.low;
@@ -111,12 +112,26 @@ export function findTriangles(candles, opts) {
 
   const lastEma = ema[ema.length - 1];
   let breakout = null; // "bullish" | "bearish" | null
+  let breakLevel = null; // "wick" | "close"
 
-  // Cassure haussiere : cloture au-dessus du sommet de la figure
-  if (last.close > figureTop && hasRealBody) breakout = "bullish";
-  // Cassure baissiere : cloture sous le bas de la figure
-  if (last.close < figureBottom && hasRealBody) breakout = "bearish";
-  if (!breakout) return null; // pas encore de cassure validee
+  // Cloture franche dehors (avec corps net) = confirmation
+  if (last.close > figureTop && hasRealBody) {
+    breakout = "bullish";
+    breakLevel = "close";
+  } else if (last.close < figureBottom && hasRealBody) {
+    breakout = "bearish";
+    breakLevel = "close";
+  }
+  // Sinon : une simple meche depasse = cassure precoce
+  else if (last.high > figureTop) {
+    breakout = "bullish";
+    breakLevel = "wick";
+  } else if (last.low < figureBottom) {
+    breakout = "bearish";
+    breakLevel = "wick";
+  }
+
+  if (!breakout) return null; // le prix est encore dans la figure
 
   // --- Filtre tendance (EMA) ---
   // On ne prend la cassure que dans le sens de la tendance.
@@ -153,6 +168,7 @@ export function findTriangles(candles, opts) {
   return {
     type,
     breakout, // "bullish" / "bearish"
+    breakLevel, // "wick" (meche) / "close" (bougie cloturee dehors)
     figureTop,
     figureBottom,
     entry,

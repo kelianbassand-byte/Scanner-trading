@@ -181,25 +181,34 @@ export function formatTradeEvent(trade, event) {
 
 // Met en forme une alerte de cassure de triangle/biseau.
 export function formatTriangle(assetName, timeframe, tri) {
-  const dir =
-    tri.breakout === "bullish"
-      ? "🟢 CASSURE HAUSSIERE (achat)"
-      : "🔴 CASSURE BAISSIERE (vente)";
+  const sens = tri.breakout === "bullish" ? "HAUSSIERE (achat)" : "BAISSIERE (vente)";
+  const couleur = tri.breakout === "bullish" ? "🟢" : "🔴";
+
+  // 2 niveaux d'alerte distincts
+  const entete =
+    tri.breakLevel === "wick"
+      ? `⚡ <b>CASSURE EN COURS — ${assetName} — ${timeframe}</b>\n${couleur} Une meche depasse la figure (${sens})\n<i>Pas encore confirme : attends la cloture de la bougie.</i>`
+      : `✅ <b>CASSURE CONFIRMEE — ${assetName} — ${timeframe}</b>\n${couleur} Bougie cloturee en dehors de la figure (${sens})`;
+
   const trendLine = tri.trendOk
-    ? "✅ Dans le sens de la tendance (EMA200)"
+    ? "✅ Dans le sens de la tendance"
     : `⚠️ ${tri.trendNote}`;
 
-  return (
-    `<b>📐 TRIANGLE/BISEAU ${assetName} — ${timeframe}</b>\n` +
-    `${dir}\n` +
+  let msg =
+    `${entete}\n` +
     `Figure : ${tri.type}\n` +
     `${trendLine}\n\n` +
-    `Zone figure : ${round(tri.figureBottom)} → ${round(tri.figureTop)}\n\n` +
-    `<b>📍 Niveaux de trade</b>\n` +
-    `Entree : ${round(tri.entry)}\n` +
-    `🛑 Stop Loss : ${round(tri.stopLoss)}\n` +
-    `🎯 Take Profit : ${round(tri.takeProfit)}\n` +
-    `Risque : ${round(tri.risk)} points\n\n` +
-    `<i>Cassure validee par une vraie bougie. Aide a la decision, pas un ordre — verifie sur ton graphique.</i>`
-  );
+    `Zone figure : ${round(tri.figureBottom)} → ${round(tri.figureTop)}\n`;
+
+  // On ne donne les niveaux de trade que sur la cassure CONFIRMEE (cloture).
+  if (tri.breakLevel === "close") {
+    msg +=
+      `\n<b>📍 Niveaux de trade</b>\n` +
+      `Entree : ${round(tri.entry)}\n` +
+      `🛑 Stop Loss : ${round(tri.stopLoss)}\n` +
+      `🎯 Take Profit : ${round(tri.takeProfit)}\n` +
+      `Risque : ${round(tri.risk)} points\n`;
+  }
+  msg += `\n<i>Aide a la decision, pas un ordre — verifie sur ton graphique.</i>`;
+  return msg;
 }

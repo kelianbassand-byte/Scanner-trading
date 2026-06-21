@@ -12,17 +12,13 @@
 
 import { config } from "./config.js";
 import { fetchCandles } from "./data.js";
-import { findOrderBlockVShape } from "./orderblocks_v.js";
 import { findRsiDivergence } from "./divergence.js";
 import { findTriangles } from "./triangles.js";
-import { findTrendlineBreak } from "./trendlines.js";
 import {
   sendTelegram,
   formatTriangle,
   formatTradeEvent,
-  formatOrderBlockV,
   formatDivergence,
-  formatTrendline,
 } from "./telegram.js";
 import {
   fetchEconomicCalendar,
@@ -163,54 +159,63 @@ async function scanAsset(asset) {
 
   // 4) Pour chaque technique, collecter les signaux sur tous les TF.
   //    On stocke { tf, signal } et on triera par taille de TF.
-  const collected = { ob_vshape: [], rsi_divergence: [], triangle: [], trendline: [] };
+  const collected = { rsi_divergence: [] };
 
   for (const tf of Object.keys(dataByTf)) {
     const candles = dataByTf[tf];
 
-    // -- Order Block V/V (timeframes standard 15m/1h/4h) --
+    // -- Divergence RSI + MACD Zero Lag --
     if (config.timeframes.includes(tf)) {
-      const ob = findOrderBlockVShape(candles, { tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
-      if (ob && ob.trendOk) collected.ob_vshape.push({ tf, signal: ob });
-
-      // -- Divergence RSI + MACD Zero Lag (memes timeframes) --
       const div = findRsiDivergence(candles, { rsiPeriod: config.detection.rsiPeriod, tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
       if (div) collected.rsi_divergence.push({ tf, signal: div });
     }
 
-    // -- Triangle (seulement 4h/6h/journalier) --
+    // -- Triangle (2 notifs : meche puis cloture) --
     if (config.triangleTimeframes.includes(tf)) {
       const tri = findTriangles(candles, {});
       if (tri && tri.trendOk) {
-        const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
-        // SL "comme Faustin" : dernier pivot de structure, annule si >3%.
-        const lvls = buildStructuralLevels(triDir, tri.entry, candles, { maxRiskPct: 3, lookback: 20, minTp1Distance: asset.minTp1Distance });
-        if (lvls) {
-          const triSignal = {
-            technique: "triangle", direction: triDir, index: candles[candles.length - 1].time,
-            entry: tri.entry, stopLoss: lvls.stopLoss, takeProfits: lvls.takeProfits, _tri: tri,
-          };
-          collected.triangle.push({ tf, signal: triSignal });
-        }
+        await emitTriangle(asset, tf, tri, candles, activeNews);
+      } else {
+        console.log(`  ${asset.name} ${tf} (triangle): aucune cassure`);
       }
-    }
-
-    // -- Ligne de tendance (seulement 1h/4h) --
-    if (config.trendlineTimeframes.includes(tf)) {
-      const tl = findTrendlineBreak(candles, { tradeLevels: lv, minTp1Distance: asset.minTp1Distance });
-      if (tl) collected.trendline.push({ tf, signal: tl });
     }
   }
 
-  // 5) Pour chaque technique : regrouper par SENS, garder la plus grande UT.
-  await emitGrouped(asset, collected.ob_vshape, "ob_vshape", activeNews,
-    (a, tf, s) => formatOrderBlockV(a, tf, s));
+  // Divergence : regroupement multi-timeframe (1 notif sur la plus grande UT).
   await emitGrouped(asset, collected.rsi_divergence, "rsi_divergence", activeNews,
     (a, tf, s) => formatDivergence(a, tf, s));
-  await emitGrouped(asset, collected.triangle, "triangle", activeNews,
-    (a, tf, s) => formatTriangle(a, tf, s._tri));
-  await emitGrouped(asset, collected.trendline, "trendline", activeNews,
-    (a, tf, s) => formatTrendline(a, tf, s));
+}
+
+// Gere les 2 notifications du triangle :
+//  - "wick"  : une meche depasse -> alerte precoce (pas de trade ouvert)
+//  - "close" : bougie cloturee dehors -> confirmation + trade suivi
+async function emitTriangle(asset, tf, tri, candles, activeNews) {
+  const lastTime = candles[candles.length - 1].time;
+  // Cle distincte par niveau, pour envoyer les 2 notifs (pas de doublon).
+  const key = `TRI|${asset.name}|${tf}|${tri.breakout}|${tri.breakLevel}|${lastTime}`;
+  if (alreadyAlerted(key)) {
+    console.log(`  ${asset.name} ${tf} (triangle ${tri.breakLevel}): deja alerte`);
+    return;
+  }
+
+  await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, tf, tri), activeNews));
+  alertMemory.set(key, Date.now());
+  console.log(`  >>> TRIANGLE ${asset.name} ${tf} ${tri.breakout} (${tri.breakLevel})`);
+
+  // On n'ouvre un trade de suivi que sur la cassure CONFIRMEE (cloture dehors),
+  // et seulement si pas deja un trade triangle en cours sur cet actif/TF.
+  if (tri.breakLevel === "close" && !hasOpenTrade(asset.name, tf, "triangle")) {
+    const triDir = tri.breakout === "bullish" ? "bullish" : "bearish";
+    const lvls = buildStructuralLevels(triDir, tri.entry, candles, {
+      maxRiskPct: 3, lookback: 20, minTp1Distance: asset.minTp1Distance,
+    });
+    if (lvls) {
+      openTrade(asset, tf, {
+        technique: "triangle", direction: triDir, index: lastTime,
+        entry: tri.entry, stopLoss: lvls.stopLoss, takeProfits: lvls.takeProfits,
+      });
+    }
+  }
 }
 
 // Prend la liste des signaux d'une technique (sur plusieurs TF), et pour
@@ -279,7 +284,7 @@ async function main() {
   console.log(`Actifs: ${config.assets.map((a) => a.name).join(", ")}`);
   console.log(`Timeframes (15m min): ${config.timeframes.join(", ")}`);
   console.log(`Triangles: ${config.triangleTimeframes.join(", ")}`);
-  console.log(`Techniques: Order Block V/V, Divergence RSI+MACD ZeroLag, Triangles, Lignes de tendance`);
+  console.log(`Techniques: Divergence RSI+MACD ZeroLag, Triangles (meche + cloture)`);
   console.log(`Scan toutes les ${config.scanIntervalSec}s\n`);
 
   // --- TEST CALENDRIER ---

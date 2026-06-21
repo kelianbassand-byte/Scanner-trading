@@ -5,7 +5,8 @@
 
 import { computeRSI } from "./rsi.js";
 import { computeMacdZeroLag } from "./divergence.js";
-import { findOrderBlockVShape } from "./orderblocks_v.js";
+import { findTriangles } from "./triangles.js";
+import { buildStructuralLevels } from "./confirm.js";
 import { openTrade, hasOpenTrade, updateTradesFor, checkTrade } from "./trades.js";
 
 let pass = 0, fail = 0;
@@ -25,38 +26,49 @@ const wave = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.3) * 5 + 
 const macd = computeMacdZeroLag(wave);
 check("MACD Zero Lag renvoie des valeurs", macd.macd[macd.macd.length - 1] != null);
 
-// Test 3 : Order Block V haussier (mouvement resserre pour SL < 3%)
-const candles = []; let t = 0; const step = 900000; let p = 100;
-for (let i = 0; i < 40; i++) { candles.push(c(t, p, p + 0.2, p + 0.3, p - 0.15)); p += 0.2; t += step; }
-// creux en V peu profond avec un point bas UNIQUE
-let d = 108;
-for (let i = 0; i < 4; i++) { candles.push(c(t, d, d - 0.5, d + 0.1, d - 0.6)); d -= 0.5; t += step; }
-// bougie creux la plus basse (unique)
-candles.push(c(t, d, d - 0.3, d + 0.1, d - 0.8)); t += step;
-let u = d - 0.3;
-for (let i = 0; i < 3; i++) { candles.push(c(t, u, u + 0.4, u + 0.5, u - 0.1)); u += 0.4; t += step; }
-const ob = findOrderBlockVShape(candles, {});
-check("Order Block V haussier detecte", ob && ob.direction === "bullish");
-check("OB-V dans le sens de la tendance", ob && ob.trendOk === true);
-check("OB-V a une zone et des TP", ob && ob.zoneTop > ob.zoneBottom && ob.takeProfits.tp1 > ob.entry);
+// Test 3 : SL/TP structurels + filtre TP1
+const cd = [];
+[64000,64200,64500,64800,65100,65800,65600,65300,65000,64700,64500,64600,64700,64800,64900,65000]
+  .forEach((p, i) => cd.push(c(i, 0, 0, p + 20, p - 20)));
+const lvls = buildStructuralLevels("bullish", 65000, cd, { maxRiskPct: 5, lookback: 20, minTp1Distance: 300 });
+check("SL/TP structurels calcules", lvls && lvls.takeProfits.tp1 > 65000);
+check("TP1 > TP2 ordre buy", lvls && lvls.takeProfits.tp1 < lvls.takeProfits.tp2);
+// TP1 trop proche -> annule
+const lvls2 = buildStructuralLevels("bullish", 65000, cd, { maxRiskPct: 5, lookback: 20, minTp1Distance: 100000 });
+check("Trade annule si TP1 trop proche", lvls2 === null);
 
-// Test 4 : anti-doublon par technique
+// Test 4 : Triangle - 2 niveaux (meche vs cloture)
+function makeTriangle(lastCandle) {
+  const candles = []; let t = 0; let p = 90;
+  for (let i = 0; i < 80; i++) { candles.push(c(t, p, p + 0.2, p + 0.4, p - 0.3)); p += 0.2; t++; }
+  const tops = [120, 118, 116]; const bots = [100, 102, 104]; let cur = 100;
+  for (let k = 0; k < 3; k++) {
+    candles.push(c(t, cur, tops[k] - 3, tops[k] - 2, cur - 1)); t++;
+    candles.push(c(t, tops[k] - 3, tops[k] - 1, tops[k], tops[k] - 4)); t++;
+    candles.push(c(t, tops[k] - 1, tops[k] - 5, tops[k] - 1, tops[k] - 6)); t++;
+    candles.push(c(t, tops[k] - 5, bots[k] + 3, tops[k] - 5, bots[k] + 2)); t++;
+    candles.push(c(t, bots[k] + 3, bots[k] + 1, bots[k] + 4, bots[k])); t++;
+    candles.push(c(t, bots[k] + 1, bots[k] + 5, bots[k] + 6, bots[k] + 1)); t++;
+    cur = bots[k] + 5;
+  }
+  candles.push(lastCandle(t)); return candles;
+}
+// Cloture franche au-dessus de 120 = "close"
+const triClose = findTriangles(makeTriangle((t) => c(t, 110, 128, 129, 109)), {});
+check("Triangle cassure CLOTURE detectee", triClose && triClose.breakLevel === "close");
+// Meche seule au-dessus (cloture dedans) = "wick"
+const triWick = findTriangles(makeTriangle((t) => c(t, 110, 114, 126, 109)), {});
+check("Triangle cassure MECHE detectee", triWick && triWick.breakLevel === "wick");
+
+// Test 5 : suivi de trade TP1 -> break-even, SL ferme
 const asset = { name: "TESTBTC" };
 const sig = (tech, entry) => ({ technique: tech, direction: "bullish", index: 1, entry,
   stopLoss: entry * 0.995, takeProfits: { tp1: entry * 1.0075, tp2: entry * 1.015, tp3: entry * 1.03 } });
-openTrade(asset, "15m", sig("ob_vshape", 65000));
-check("OB-V bloque un 2e OB-V meme actif/TF", hasOpenTrade("TESTBTC", "15m", "ob_vshape") === true);
-check("autre technique autorisee meme actif/TF", hasOpenTrade("TESTBTC", "15m", "rsi_divergence") === false);
-check("autre TF autorise", hasOpenTrade("TESTBTC", "1h", "ob_vshape") === false);
-
-// Test 5 : suivi TP1 -> SL au break-even
-const trade = openTrade(asset, "4h", sig("ob_vshape", 100));
+const trade = openTrade(asset, "1h", sig("triangle", 100));
 checkTrade(trade, { high: 100.8, low: 99.9, open: 0, close: 0, time: 0 }, true);
 check("TP1 touche remonte le SL a l'entree", trade.slMovedToEntry === true && trade.stopLoss === 100);
-
-// Test 6 : SL ferme le trade
-updateTradesFor("TESTBTC", "15m", { high: 65010, low: 64600, open: 0, close: 0, time: 0 }, true);
-check("OB-V referme apres SL touche", hasOpenTrade("TESTBTC", "15m", "ob_vshape") === false);
+check("anti-doublon triangle meme actif/TF", hasOpenTrade("TESTBTC", "1h", "triangle") === true);
+check("autre TF autorise", hasOpenTrade("TESTBTC", "4h", "triangle") === false);
 
 console.log(`\nResultat: ${pass} OK, ${fail} FAIL`);
 console.log("Test termine.");
