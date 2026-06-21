@@ -1,0 +1,11 @@
+{
+  "name": "ob-scanner",
+  "version": "1.0.0",
+  "description": "Scanner d'Order Blocks (methode 5 etoiles) + RSI pour XAUUSD et Bitcoin, avec alertes Telegram",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node selftest.js"
+  }
+}
