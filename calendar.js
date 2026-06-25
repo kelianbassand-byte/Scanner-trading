@@ -46,9 +46,16 @@ export async function fetchEconomicCalendar(config) {
     const name = ev.Name || ev.name || ev.event || "Evenement";
     const dateStr = ev.Date || ev.date || ev.data || ev.time;
 
-    // On ne garde que les devises voulues et le fort impact
+    // On ne garde que les devises voulues et le fort impact.
+    // On capte large : "high", "3", "fort", "red" (Forex Factory code couleur),
+    // et les libelles textuels eventuels.
     if (!currencies.includes(cur)) continue;
-    const isHigh = impact.includes("high") || impact === "3" || impact.includes("fort");
+    const isHigh =
+      impact.includes("high") ||
+      impact.includes("fort") ||
+      impact.includes("red") ||
+      impact === "3" ||
+      impact === "high impact expected";
     if (!isHigh) continue;
 
     const time = dateStr ? new Date(dateStr) : null;
