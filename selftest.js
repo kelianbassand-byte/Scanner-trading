@@ -53,8 +53,8 @@ function makeTriangle(lastCandle) {
   }
   candles.push(lastCandle(t)); return candles;
 }
-// Cloture franche au-dessus de 120 = "close"
-const triClose = findTriangles(makeTriangle((t) => c(t, 110, 128, 129, 109)), {});
+// Corps ENTIER au-dessus de 120 (open 122, close 128) = "close"
+const triClose = findTriangles(makeTriangle((t) => c(t, 122, 128, 129, 121)), {});
 check("Triangle cassure CLOTURE detectee", triClose && triClose.breakLevel === "close");
 // Meche seule au-dessus (cloture dedans) = "wick"
 const triWick = findTriangles(makeTriangle((t) => c(t, 110, 114, 126, 109)), {});

@@ -12,19 +12,23 @@
 
 // fetch est integre nativement dans Node 18+, pas besoin de l'importer.
 
-export async function sendTelegram(config, message) {
-  const { token, chatId } = config.telegram;
+// Envoie un message Telegram.
+// dest : "private" (defaut, ton chat perso) ou "channel" (le canal).
+export async function sendTelegram(config, message, dest = "private") {
+  const { token, chatId, channelId } = config.telegram;
   if (!token || token === "TON_TOKEN_ICI") {
     console.log("[Telegram non configure] Message qui aurait ete envoye :\n" + message);
     return;
   }
+  // Choix de la destination
+  const target = dest === "channel" && channelId ? channelId : chatId;
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: target,
         text: message,
         parse_mode: "HTML",
       }),

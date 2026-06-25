@@ -11,6 +11,8 @@ export const config = {
   telegram: {
     token: process.env.TELEGRAM_TOKEN || "TON_TOKEN_ICI",
     chatId: process.env.TELEGRAM_CHAT_ID || "TON_CHAT_ID_ICI",
+    // Canal Telegram : recoit le calendrier + les alertes CONFIRMEES + suivis TP/SL.
+    channelId: process.env.TELEGRAM_CHANNEL_ID || "-1004424683146",
   },
 
   // --- Twelve Data (pour l'OR / XAUUSD) ---

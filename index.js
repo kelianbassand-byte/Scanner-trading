@@ -72,10 +72,10 @@ async function maybeSendMorningCalendar() {
   // le bot demarre un peu apres 8h).
   if (nowMin >= target && nowMin <= target + 60) {
     await ensureCalendar();
-    await sendTelegram(config, formatCalendar(todayEvents));
+    await sendTelegram(config, formatCalendar(todayEvents), "channel");
     // Gros titres USA (contexte geopolitique/macro)
     const headlines = await fetchUsHeadlines(6);
-    await sendTelegram(config, formatHeadlines(headlines));
+    await sendTelegram(config, formatHeadlines(headlines), "channel");
     morningSentDay = today;
     console.log(`  >>> Calendrier + gros titres du matin envoyes (${today})`);
   }
@@ -151,7 +151,7 @@ async function scanAsset(asset) {
     const updates = updateTradesFor(asset.name, tf, lastCandle, moveSl);
     for (const { trade, events } of updates) {
       for (const ev of events) {
-        await sendTelegram(config, formatTradeEvent(trade, ev));
+        await sendTelegram(config, formatTradeEvent(trade, ev), "channel");
         console.log(`  >>> ${ev} ${asset.name} ${tf} ${trade.technique} (suivi)`);
       }
     }
@@ -202,7 +202,9 @@ async function emitTriangle(asset, tf, tri, candles, activeNews) {
     return;
   }
 
-  await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, tf, tri), activeNews));
+  // Cloture confirmee -> canal. Meche (alerte precoce) -> prive seulement.
+  const dest = tri.breakLevel === "close" ? "channel" : "private";
+  await sendTelegram(config, withNewsWarning(formatTriangle(asset.name, tf, tri), activeNews), dest);
   alertMemory.set(key, Date.now());
   console.log(`  >>> TRIANGLE ${asset.name} ${tf} ${tri.breakout} (${tri.breakLevel})`);
 
@@ -256,7 +258,7 @@ async function emitGrouped(asset, list, technique, activeNews, formatFn) {
     if (confirms.length > 1) {
       msg += `\n\n<i>Signal confirme sur ${confirms.length} unites (${confirms.join(", ")}). Notif sur la plus grande : ${tf}.</i>`;
     }
-    await sendTelegram(config, withNewsWarning(msg, activeNews));
+    await sendTelegram(config, withNewsWarning(msg, activeNews), "channel");
     alertMemory.set(key, Date.now());
     openTrade(asset, tf, signal);
     console.log(`  >>> ALERTE ${technique} ${asset.name} ${tf} ${dir}${confirms.length > 1 ? " (regroupe " + confirms.length + " UT)" : ""}`);
@@ -301,11 +303,11 @@ async function main() {
       const events = await fetchEconomicCalendar(config);
       const n = events === null ? "ECHEC" : events.length;
       console.log(`>>> Calendrier test : ${n} news recuperees`);
-      await sendTelegram(config, formatCalendar(events));
+      await sendTelegram(config, formatCalendar(events), "channel");
       const headlines = await fetchUsHeadlines(6);
       const h = headlines === null ? "ECHEC" : headlines.length;
       console.log(`>>> Gros titres test : ${h} titres recuperes`);
-      await sendTelegram(config, formatHeadlines(headlines));
+      await sendTelegram(config, formatHeadlines(headlines), "channel");
       console.log(">>> Messages calendrier + titres envoyes sur Telegram");
     } catch (e) {
       console.error(`>>> Test calendrier erreur : ${e.message}`);

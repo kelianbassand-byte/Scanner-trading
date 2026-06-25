@@ -104,25 +104,28 @@ export function findTriangles(candles, opts) {
 
   // --- Detecter la cassure : 2 niveaux ---
   //  - "wick"  : une MECHE depasse la figure (alerte precoce)
-  //  - "close" : une bougie COMPLETE cloture dehors (confirmation)
+  //  - "close" : le CORPS ENTIER (open ET close) est dehors (confirmation).
+  //              Les meches peuvent encore depasser dans la figure, peu importe.
   const last = candles[candles.length - 1];
   const body = Math.abs(last.close - last.open);
   const range = last.high - last.low;
   const hasRealBody = range > 0 && body / range >= breakoutBodyRatio; // pas un doji
+  const bodyTop = Math.max(last.open, last.close);
+  const bodyBottom = Math.min(last.open, last.close);
 
   const lastEma = ema[ema.length - 1];
   let breakout = null; // "bullish" | "bearish" | null
   let breakLevel = null; // "wick" | "close"
 
-  // Cloture franche dehors (avec corps net) = confirmation
-  if (last.close > figureTop && hasRealBody) {
+  // Corps ENTIER au-dessus du haut de la figure (open ET close dehors) = confirmation
+  if (bodyBottom > figureTop && hasRealBody) {
     breakout = "bullish";
     breakLevel = "close";
-  } else if (last.close < figureBottom && hasRealBody) {
+  } else if (bodyTop < figureBottom && hasRealBody) {
     breakout = "bearish";
     breakLevel = "close";
   }
-  // Sinon : une simple meche depasse = cassure precoce
+  // Sinon : une simple meche depasse = cassure precoce (corps encore dans/sur la figure)
   else if (last.high > figureTop) {
     breakout = "bullish";
     breakLevel = "wick";
