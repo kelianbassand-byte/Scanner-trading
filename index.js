@@ -75,7 +75,7 @@ async function maybeSendMorningCalendar() {
     await sendTelegram(config, formatCalendar(todayEvents), "channel");
     // Gros titres USA (contexte geopolitique/macro)
     const headlines = await fetchUsHeadlines(6);
-    await sendTelegram(config, formatHeadlines(headlines), "channel");
+    await sendTelegram(config, await formatHeadlines(headlines), "channel");
     morningSentDay = today;
     console.log(`  >>> Calendrier + gros titres du matin envoyes (${today})`);
   }
@@ -307,7 +307,7 @@ async function main() {
       const headlines = await fetchUsHeadlines(6);
       const h = headlines === null ? "ECHEC" : headlines.length;
       console.log(`>>> Gros titres test : ${h} titres recuperes`);
-      await sendTelegram(config, formatHeadlines(headlines), "channel");
+      await sendTelegram(config, await formatHeadlines(headlines), "channel");
       console.log(">>> Messages calendrier + titres envoyes sur Telegram");
     } catch (e) {
       console.error(`>>> Test calendrier erreur : ${e.message}`);

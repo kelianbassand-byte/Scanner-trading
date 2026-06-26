@@ -82,6 +82,63 @@ export function newsWindowActive(events, now, windowMinutes) {
 }
 
 // Met en forme le calendrier du matin pour Telegram.
+// --- Traduction FR des evenements economiques courants ---
+// On remplace les termes anglais par leur equivalent francais.
+// Liste des expressions traduites (de la plus longue a la plus courte
+// pour eviter les remplacements partiels).
+const TRAD_ECO = [
+  ["Federal Funds Rate", "Taux directeur de la Fed"],
+  ["Fed Interest Rate Decision", "Decision de taux de la Fed"],
+  ["Interest Rate Decision", "Decision de taux"],
+  ["FOMC Statement", "Communique du FOMC (Fed)"],
+  ["FOMC Meeting Minutes", "Minutes de la reunion du FOMC"],
+  ["FOMC Press Conference", "Conference de presse du FOMC"],
+  ["FOMC Economic Projections", "Projections economiques du FOMC"],
+  ["Press Conference", "Conference de presse"],
+  ["Non-Farm Employment Change", "Emploi non-agricole (NFP)"],
+  ["Non-Farm Payrolls", "Emploi non-agricole (NFP)"],
+  ["Unemployment Rate", "Taux de chomage"],
+  ["Unemployment Claims", "Inscriptions au chomage"],
+  ["Average Hourly Earnings", "Salaire horaire moyen"],
+  ["Core CPI", "Inflation sous-jacente core"],
+  ["CPI", "Inflation (CPI)"],
+  ["Core PCE Price Index", "Indice PCE core (inflation Fed)"],
+  ["PCE Price Index", "Indice des prix PCE"],
+  ["Core PPI", "Prix a la production core"],
+  ["PPI", "Prix a la production (PPI)"],
+  ["Retail Sales", "Ventes au detail"],
+  ["Core Retail Sales", "Ventes au detail sous-jacentes"],
+  ["GDP", "PIB"],
+  ["Gross Domestic Product", "PIB"],
+  ["ISM Manufacturing PMI", "PMI manufacturier ISM"],
+  ["ISM Services PMI", "PMI des services ISM"],
+  ["Manufacturing PMI", "PMI manufacturier"],
+  ["Services PMI", "PMI des services"],
+  ["Consumer Confidence", "Confiance des consommateurs"],
+  ["Consumer Sentiment", "Sentiment des consommateurs"],
+  ["Building Permits", "Permis de construire"],
+  ["Durable Goods Orders", "Commandes de biens durables"],
+  ["Trade Balance", "Balance commerciale"],
+  ["Crude Oil Inventories", "Stocks de petrole brut"],
+  ["Jobless Claims", "Demandes d'allocation chomage"],
+  ["JOLTS Job Openings", "Offres d'emploi (JOLTS)"],
+  ["Fed Chair", "President de la Fed"],
+  ["Treasury", "Tresor americain"],
+  ["m/m", "(mensuel)"],
+  ["y/y", "(annuel)"],
+  ["q/q", "(trimestriel)"],
+];
+
+function traduireEvenement(nom) {
+  let out = nom;
+  for (const [en, fr] of TRAD_ECO) {
+    // remplacement insensible a la casse
+    const re = new RegExp(en.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    out = out.replace(re, fr);
+  }
+  return out;
+}
+
 export function formatCalendar(events) {
   if (events === null) {
     return "<b>📅 Calendrier eco du jour</b>\nImpossible de recuperer le calendrier ce matin (source indisponible). Verifie manuellement sur Forex Factory.";
@@ -89,7 +146,7 @@ export function formatCalendar(events) {
   if (events.length === 0) {
     return "<b>📅 Calendrier eco du jour</b>\nAucune news a fort impact prevue aujourd'hui. Journee plus calme cote fondamental.";
   }
-  let msg = "<b>📅 Calendrier eco du jour — fort impact</b>\n\n";
+  let msg = "<b>📅 Calendrier economique du jour — fort impact</b>\n\n";
   for (const ev of events) {
     const h = ev.time
       ? ev.time.toLocaleTimeString("fr-FR", {
@@ -98,9 +155,9 @@ export function formatCalendar(events) {
           timeZone: "Europe/Paris",
         })
       : "??:??";
-    msg += `🔴 ${h} — ${ev.currency} — ${ev.name}\n`;
+    msg += `🔴 ${h} — ${ev.currency} — ${traduireEvenement(ev.name)}\n`;
   }
   msg +=
-    "\n<i>Regle : pas de trade dans les ~15 min avant/apres ces horaires. Le marche devient imprevisible (sweeps artificiels, spreads larges).</i>";
+    "\n<i>Regle : pas de trade dans les ~15 min avant/apres ces horaires. Le marche devient imprevisible.</i>";
   return msg;
 }

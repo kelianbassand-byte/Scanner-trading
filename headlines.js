@@ -37,8 +37,26 @@ export async function fetchUsHeadlines(maxItems = 6) {
   }
 }
 
-// Met en forme les gros titres pour Telegram.
-export function formatHeadlines(headlines) {
+// Traduit un texte EN -> FR via MyMemory (gratuit, sans cle).
+// Si echec, retourne le texte original.
+async function traduireFR(texte) {
+  try {
+    const url =
+      "https://api.mymemory.translated.net/get?q=" +
+      encodeURIComponent(texte) +
+      "&langpair=en|fr";
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return texte;
+    const data = await res.json();
+    const fr = data?.responseData?.translatedText;
+    return fr && fr.length > 0 ? fr : texte;
+  } catch {
+    return texte;
+  }
+}
+
+// Met en forme les gros titres pour Telegram (avec traduction FR).
+export async function formatHeadlines(headlines) {
   if (headlines === null) {
     return "<b>📰 Gros titres USA</b>\nImpossible de recuperer les titres ce matin (source indisponible).";
   }
@@ -47,8 +65,9 @@ export function formatHeadlines(headlines) {
   }
   let msg = "<b>📰 Gros titres USA — contexte du jour</b>\n\n";
   for (const h of headlines) {
+    const titreFr = await traduireFR(h.title);
     const src = h.source ? ` <i>(${h.source})</i>` : "";
-    msg += `• ${h.title}${src}\n`;
+    msg += `• ${titreFr}${src}\n`;
   }
   msg +=
     "\n<i>Contexte geopolitique/macro a surveiller (Fed, conflits, crises...). A toi de juger l'impact sur le BTC.</i>";
