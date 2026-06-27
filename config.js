@@ -42,6 +42,10 @@ export const config = {
   // Faustin conseille 1h minimum (2h/daily ideal). 15m trop fragile.
   trendlineTimeframes: ["1h", "4h"],
 
+  // --- Timeframes pour le RANGE (reintegration) ---
+  // Faustin : 30 min minimum, jamais en dessous. On prend 1h et 4h.
+  rangeTimeframes: ["1h", "4h"],
+
   // --- Combien de bougies on recupere pour l'analyse ---
   candleLimit: 200,
 

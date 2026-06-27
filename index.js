@@ -14,11 +14,13 @@ import { config } from "./config.js";
 import { fetchCandles } from "./data.js";
 import { findRsiDivergence } from "./divergence.js";
 import { findTriangles } from "./triangles.js";
+import { findRangeReintegration } from "./range.js";
 import {
   sendTelegram,
   formatTriangle,
   formatTradeEvent,
   formatDivergence,
+  formatRange,
 } from "./telegram.js";
 import {
   fetchEconomicCalendar,
@@ -183,6 +185,16 @@ async function scanAsset(asset) {
         console.log(`  ${asset.name} ${tf} (triangle): aucune cassure`);
       }
     }
+
+    // -- Range (reintegration apres faux breakout) --
+    if (config.rangeTimeframes.includes(tf)) {
+      const rg = findRangeReintegration(candles, {});
+      if (rg) {
+        await emitRange(asset, tf, rg, candles, activeNews);
+      } else {
+        console.log(`  ${asset.name} ${tf} (range): aucune reintegration`);
+      }
+    }
   }
 
   // Divergence : regroupement multi-timeframe (1 notif sur la plus grande UT).
@@ -222,6 +234,41 @@ async function emitTriangle(asset, tf, tri, candles, activeNews) {
       });
     }
   }
+}
+
+// Gere l'alerte de range (reintegration apres faux breakout).
+// C'est un signal CONFIRME (bougie de reintegration complete) -> canal + trade.
+async function emitRange(asset, tf, rg, candles, activeNews) {
+  const lastTime = candles[candles.length - 1].time;
+  // Anti-doublon : un seul trade range par actif/TF a la fois.
+  if (hasOpenTrade(asset.name, tf, "range")) {
+    console.log(`  ${asset.name} ${tf} (range): trade en cours, on attend le SL`);
+    return;
+  }
+  const key = `RANGE|${asset.name}|${tf}|${rg.direction}|${lastTime}`;
+  if (alreadyAlerted(key)) {
+    console.log(`  ${asset.name} ${tf} (range): deja alerte`);
+    return;
+  }
+
+  // SL "comme Faustin" (dernier pivot) + TP structurels, annule si >3% ou TP1<min.
+  const lvls = buildStructuralLevels(rg.direction, rg.entry, candles, {
+    maxRiskPct: 3, lookback: 20, minTp1Distance: asset.minTp1Distance,
+  });
+  if (!lvls) {
+    console.log(`  ${asset.name} ${tf} (range): SL trop loin ou TP1 trop proche, ignore`);
+    return;
+  }
+
+  const signal = {
+    technique: "range", direction: rg.direction, index: lastTime,
+    entry: rg.entry, stopLoss: lvls.stopLoss, takeProfits: lvls.takeProfits,
+    support: rg.support, resistance: rg.resistance,
+  };
+  await sendTelegram(config, withNewsWarning(formatRange(asset.name, tf, signal), activeNews), "channel");
+  alertMemory.set(key, Date.now());
+  openTrade(asset, tf, signal);
+  console.log(`  >>> RANGE ${asset.name} ${tf} ${rg.direction} (reintegration)`);
 }
 
 // Prend la liste des signaux d'une technique (sur plusieurs TF), et pour
@@ -290,7 +337,7 @@ async function main() {
   console.log(`Actifs: ${config.assets.map((a) => a.name).join(", ")}`);
   console.log(`Timeframes (15m min): ${config.timeframes.join(", ")}`);
   console.log(`Triangles: ${config.triangleTimeframes.join(", ")}`);
-  console.log(`Techniques: Divergence RSI+MACD ZeroLag, Triangles (meche + cloture)`);
+  console.log(`Techniques: Divergence RSI+MACD ZeroLag, Triangles (meche + cloture), Range (reintegration)`);
   console.log(`Scan toutes les ${config.scanIntervalSec}s\n`);
 
   // --- TEST CALENDRIER ---

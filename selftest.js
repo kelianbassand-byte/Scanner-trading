@@ -70,6 +70,16 @@ check("TP1 touche remonte le SL a l'entree", trade.slMovedToEntry === true && tr
 check("anti-doublon triangle meme actif/TF", hasOpenTrade("TESTBTC", "1h", "triangle") === true);
 check("autre TF autorise", hasOpenTrade("TESTBTC", "4h", "triangle") === false);
 
+// Test 6 : Range - reintegration apres faux breakout
+import { findRangeReintegration } from "./range.js";
+const rgCandles = []; let rt = 0;
+const rgBase = [[100,109],[109,101],[101,110],[110,100],[100,109],[109,101],[101,110],[110,100]];
+for (let rep = 0; rep < 4; rep++) { for (const [o, cl] of rgBase) { rgCandles.push(c(rt, o, cl, Math.max(o,cl)+0.4, Math.min(o,cl)-0.4)); rt++; } }
+rgCandles.push(c(rt, 101, 99, 101, 98.5)); rt++; // faux breakout bas
+rgCandles.push(c(rt, 99.5, 108, 108.5, 99.2)); rt++; // reintegration forte
+const rg = findRangeReintegration(rgCandles, { window: 40, emaPeriod: 20 });
+check("Range reintegration ACHAT detectee", rg && rg.direction === "bullish");
+
 console.log(`\nResultat: ${pass} OK, ${fail} FAIL`);
 console.log("Test termine.");
 if (fail > 0) process.exit(1);

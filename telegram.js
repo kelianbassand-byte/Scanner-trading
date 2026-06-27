@@ -134,6 +134,25 @@ export function formatTrendline(assetName, timeframe, tl) {
   );
 }
 
+// Met en forme une alerte de range (reintegration apres faux breakout).
+export function formatRange(assetName, timeframe, rg) {
+  const dir =
+    rg.direction === "bullish"
+      ? "🟢 ACHAT (reintegration apres faux breakout bas)"
+      : "🔴 VENTE (reintegration apres faux breakout haut)";
+  return (
+    `📦 <b>RANGE ${assetName} — ${timeframe}</b>\n` +
+    `${dir}\n` +
+    `✅ Dans le sens de la tendance de fond\n\n` +
+    `Range : ${round(rg.support)} → ${round(rg.resistance)}\n\n` +
+    `<b>📍 Niveaux</b>\n` +
+    `Entree : ${round(rg.entry)}\n` +
+    `🛑 SL : ${round(rg.stopLoss)}\n` +
+    `🎯 TP1 : ${round(rg.takeProfits.tp1)} | TP2 : ${round(rg.takeProfits.tp2)} | TP3 : ${round(rg.takeProfits.tp3)}\n\n` +
+    `<i>Faux breakout puis reintegration confirmee. Aide a la decision — verifie sur ton graphique.</i>`
+  );
+}
+
 function round(x) {
   if (x >= 1000) return x.toFixed(1);
   if (x >= 1) return x.toFixed(2);
