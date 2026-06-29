@@ -71,8 +71,8 @@ export function computeMacdZeroLag(closes, fast = 12, slow = 26, signalP = 9) {
   return { macd, signal, hist };
 }
 
-// --- Trouve les 2 derniers pivots (hauts ou bas) d'une serie ---
-function lastTwoPivots(values, type, left = 2, right = 2) {
+// --- Trouve les N derniers pivots (hauts ou bas) d'une serie ---
+function lastNPivots(values, type, n, left = 2, right = 2) {
   const pivots = [];
   for (let i = left; i < values.length - right; i++) {
     let ok = true;
@@ -83,7 +83,18 @@ function lastTwoPivots(values, type, left = 2, right = 2) {
     }
     if (ok) pivots.push({ index: i, value: values[i] });
   }
-  return pivots.slice(-2); // les deux plus recents
+  return pivots.slice(-n); // les n plus recents
+}
+
+// Verifie qu'une suite de valeurs est strictement croissante.
+function strictlyIncreasing(arr) {
+  for (let k = 1; k < arr.length; k++) if (arr[k] <= arr[k - 1]) return false;
+  return true;
+}
+// Verifie qu'une suite de valeurs est strictement decroissante.
+function strictlyDecreasing(arr) {
+  for (let k = 1; k < arr.length; k++) if (arr[k] >= arr[k - 1]) return false;
+  return true;
 }
 
 // --- Detecte une divergence RSI confirmee par le MACD Zero Lag ---
@@ -93,9 +104,10 @@ export function findRsiDivergence(candles, opts) {
     rsiPeriod = 14,
     tradeLevels,
     minTp1Distance,
+    minPoints = 3, // nombre de points de contact requis (prix + RSI)
   } = opts || {};
 
-  if (candles.length < 40) return null;
+  if (candles.length < 50) return null;
 
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);
@@ -109,12 +121,13 @@ export function findRsiDivergence(candles, opts) {
   const sigNow = signal[i];
   if (macdNow == null || sigNow == null) return null;
 
-  // --- Divergence BAISSIERE : prix plus-haut, RSI plus-bas ---
-  const priceHighs = lastTwoPivots(highs, "high");
-  const rsiAtPriceHighs = priceHighs.map((p) => rsi[p.index]).filter((v) => v != null);
-  if (priceHighs.length === 2 && rsiAtPriceHighs.length === 2) {
-    const priceUp = priceHighs[1].value > priceHighs[0].value;
-    const rsiDown = rsiAtPriceHighs[1] < rsiAtPriceHighs[0];
+  // --- Divergence BAISSIERE : prix fait des plus-hauts montants,
+  //     RSI fait des plus-hauts descendants, sur minPoints points ---
+  const priceHighs = lastNPivots(highs, "high", minPoints);
+  const rsiAtHighs = priceHighs.map((p) => rsi[p.index]);
+  if (priceHighs.length === minPoints && rsiAtHighs.every((v) => v != null)) {
+    const priceUp = strictlyIncreasing(priceHighs.map((p) => p.value));
+    const rsiDown = strictlyDecreasing(rsiAtHighs);
     const macdConfirms = macdNow < sigNow; // MACD ZL baissier
     const lastC = candles[candles.length - 1];
     const candleConfirms = lastC.close < lastC.open && hasSolidBody(lastC, 0.5);
@@ -122,8 +135,8 @@ export function findRsiDivergence(candles, opts) {
       return buildDivergence({
         direction: "bearish",
         entry: lastPrice,
-        pivotIndex: priceHighs[1].index,
-        extreme: priceHighs[1].value, // dernier plus-haut -> base du SL
+        pivotIndex: priceHighs[priceHighs.length - 1].index,
+        extreme: priceHighs[priceHighs.length - 1].value,
         rsiNow: rsi[i],
         candles,
         tradeLevels,
@@ -132,12 +145,13 @@ export function findRsiDivergence(candles, opts) {
     }
   }
 
-  // --- Divergence HAUSSIERE : prix plus-bas, RSI plus-haut ---
-  const priceLows = lastTwoPivots(lows, "low");
-  const rsiAtPriceLows = priceLows.map((p) => rsi[p.index]).filter((v) => v != null);
-  if (priceLows.length === 2 && rsiAtPriceLows.length === 2) {
-    const priceDown = priceLows[1].value < priceLows[0].value;
-    const rsiUp = rsiAtPriceLows[1] > rsiAtPriceLows[0];
+  // --- Divergence HAUSSIERE : prix fait des plus-bas descendants,
+  //     RSI fait des plus-bas montants, sur minPoints points ---
+  const priceLows = lastNPivots(lows, "low", minPoints);
+  const rsiAtLows = priceLows.map((p) => rsi[p.index]);
+  if (priceLows.length === minPoints && rsiAtLows.every((v) => v != null)) {
+    const priceDown = strictlyDecreasing(priceLows.map((p) => p.value));
+    const rsiUp = strictlyIncreasing(rsiAtLows);
     const macdConfirms = macdNow > sigNow; // MACD ZL haussier
     const lastCb = candles[candles.length - 1];
     const candleConfirms = lastCb.close > lastCb.open && hasSolidBody(lastCb, 0.5);
@@ -145,8 +159,8 @@ export function findRsiDivergence(candles, opts) {
       return buildDivergence({
         direction: "bullish",
         entry: lastPrice,
-        pivotIndex: priceLows[1].index,
-        extreme: priceLows[1].value, // dernier plus-bas -> base du SL
+        pivotIndex: priceLows[priceLows.length - 1].index,
+        extreme: priceLows[priceLows.length - 1].value,
         rsiNow: rsi[i],
         candles,
         tradeLevels,

@@ -11,7 +11,7 @@
 //     (ou au moins l'amplitude se reduit nettement).
 //   - Attendre une VRAIE bougie de cassure ("bougie de A a Z"),
 //     complete et avec du corps — pas un petit doji (piege).
-//   - Trader dans le SENS DE LA TENDANCE (filtre moyenne mobile EMA200).
+//   - Trader dans le SENS DE LA TENDANCE (filtre moyenne mobile EMA100).
 //   - TP = dernier plus haut de la figure (achat) / plus bas (vente).
 //   - SL = dans la zone qui reintegrerait la figure (invalidation).
 //
@@ -19,7 +19,7 @@
 // ============================================================
 
 // --- Moyenne mobile exponentielle (EMA) ---
-// Sert de filtre de tendance, comme dans les videos (EMA 200).
+// Sert de filtre de tendance, filtre de tendance de fond (EMA 100).
 function computeEMA(closes, period) {
   const ema = new Array(closes.length).fill(null);
   if (closes.length < period) return ema;
@@ -59,7 +59,7 @@ function findPivots(candles, left = 2, right = 2) {
 // les creux montent, et que l'amplitude se reduit, c'est une compression.
 export function findTriangles(candles, opts) {
   const {
-    emaPeriod = 200,
+    emaPeriod = 100,
     minPivots = 3, // au moins 3 sommets + 3 creux pour une figure fiable
     breakoutBodyRatio = 0.5, // la bougie de cassure doit avoir un vrai corps
   } = opts || {};
@@ -143,11 +143,11 @@ export function findTriangles(candles, opts) {
   if (lastEma != null) {
     if (breakout === "bullish" && last.close < lastEma) {
       trendOk = false;
-      trendNote = "cassure haussiere mais prix sous EMA200 (contre-tendance)";
+      trendNote = "cassure haussiere mais prix sous EMA100 (contre-tendance)";
     }
     if (breakout === "bearish" && last.close > lastEma) {
       trendOk = false;
-      trendNote = "cassure baissiere mais prix au-dessus EMA200 (contre-tendance)";
+      trendNote = "cassure baissiere mais prix au-dessus EMA100 (contre-tendance)";
     }
   }
 
